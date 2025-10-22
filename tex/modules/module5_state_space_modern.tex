@@ -1,0 +1,420 @@
+\chapter{State-Space Methods and Modern Control}
+\label{chap:modern}
+
+\begin{learningobjective}
+\begin{itemize}[leftmargin=*]
+    \item Evaluate controllability and observability rigorously and understand their physical meaning.
+    \item Design state-feedback controllers via pole placement and Linear Quadratic Regulation (LQR), including servo prefilters.
+    \item Integrate state estimation (Kalman filtering) to close the loop in the presence of measurement noise.
+\end{itemize}
+\end{learningobjective}
+
+\section{Concept Map for Beginners}
+\begin{conceptroadmap}
+\begin{enumerate}[leftmargin=*]
+    \item Treat the state as the story of the system between input and output; once that narrative is clear, matrices simply formalize it.
+    \item Diagnose controllability and observability before designing anything so you know which goals are achievable.
+    \item Pair optimal control (LQR) with optimal estimation (Kalman filter) to build the modern separation-principle controller seen in practice.
+\end{enumerate}
+\end{conceptroadmap}
+
+\section{Concept--Math--Engineering Loop}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{0.28\linewidth}|>{\raggedright\arraybackslash}p{0.34\linewidth}|>{\raggedright\arraybackslash}X|}
+        \hline
+        \textbf{Concept} & \textbf{Mathematics} & \textbf{Engineering Practice} \\
+        \hline
+        Keeping the state explicit & Canonical realisations, matrix assembly & Recreate $A$, $B$, $C$, $D$ from a transfer function with \texttt{control.ss} to confirm intuition. \\
+        \hline
+        Deciding what is controllable & Rank of $\mathcal{C}$, $\mathcal{O}$ & Use \texttt{demo.py lqr --no-plot} to print ranks before attempting placement or LQR. \\
+        \hline
+        Optimal control + estimation & Discrete Riccati equations for LQR and Kalman & Run \texttt{EXPERIMENTS["lqr"]} and \texttt{EXPERIMENTS["kf\_lqr"]} to inspect gains, covariance logs, and innovation statistics. \\
+        \hline
+    \end{tabularx}
+    \caption{The Module~\ref{chap:modern} workflow linking conceptual reasoning, algebra, and executable experiments.}
+\end{table}
+
+The presentation mirrors the step-by-step development advocated by \textcite{ljung2012control}, blending geometric insight with computational recipes.
+
+\section{Why State-Space?}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Explains the benefits of representing dynamics with internal state variables.
+    \item[\textbf{Why?}] State-space handles multivariable systems, initial conditions, and modern control designs more naturally than transfer functions alone.
+    \item[\textbf{When?}] Whenever systems have multiple inputs/outputs, need observer design, or involve optimal control.
+    \item[\textbf{How?}] Define the state, write $\dot{x}=Ax+Bu$, $y=Cx+Du$, and relate it to familiar transfer-function descriptions.
+    \item[\textbf{Example}] Convert a mass--spring--damper transfer function to controllable canonical form using \texttt{control.ss}.
+\end{beginnerguide}
+Transfer functions describe how inputs map to outputs by eliminating intermediate variables. State-space models keep those internal variables---the \emph{state}---explicit:
+\begin{align}
+    \dot{x} &= A x + B u,\\
+    y &= C x + D u.
+\end{align}
+For beginners, it helps to answer three practical questions:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{What is the state?} A minimal set of variables that completely describe the system at any instant. For a mass--spring--damper, $x = [\text{position};~\text{velocity}]$ is enough to predict future motion.
+    \item \textbf{When should I use state-space?} Whenever you need to model multiple inputs/outputs, track initial conditions explicitly, or design modern controllers (state feedback, observers, optimal control). Classical transfer-function tools become cumbersome in these scenarios.
+    \item \textbf{How does it relate to transfer functions?} If a system is linear and time invariant, you can move between the two representations. Eliminating the state from the equations produces the transfer function; factoring a transfer function back into first-order equations yields a state-space realisation.
+\end{itemize}
+
+\subsection{Connecting to Transfer Functions}
+Consider a single-input single-output (SISO) transfer function
+\[
+    G(s) = \frac{b_{m}s^{m} + \dots + b_1 s + b_0}{s^{n} + a_{n-1} s^{n-1} + \dots + a_1 s + a_0},
+\]
+normalised so the leading denominator coefficient is $1$. One controllable canonical realisation is obtained by defining the state as the stacked derivatives of the output,
+\[
+    x = \begin{bmatrix} y \\ \dot{y} \\ \vdots \\ y^{(n-1)} \end{bmatrix},
+\]
+producing the matrices
+\begin{align}
+    A &= \begin{bmatrix}
+        0 & 1 & 0 & \dots & 0 \\
+        0 & 0 & 1 & \dots & 0 \\
+        \vdots & \vdots & \vdots & \ddots & \vdots \\
+        0 & 0 & 0 & \dots & 1 \\
+        -a_0 & -a_1 & -a_2 & \dots & -a_{n-1}
+    \end{bmatrix}, &
+    B &= \begin{bmatrix} 0 \\ 0 \\ \vdots \\ 0 \\ 1 \end{bmatrix},\\
+    C &= \begin{bmatrix} \beta_0 & \beta_1 & \dots & \beta_{n-1} \end{bmatrix}, &
+    D &= d,
+\end{align}
+where the strictly proper case ($m \leq n-1$) sets $d = 0$ and $\beta_i = b_i$ (pad missing coefficients with zeros so the vector has length $n$). If the numerator order equals the denominator order, factor out the direct term $d = b_n$ and build the strictly proper remainder using the formula above. This construction guarantees that $G(s) = C (sI - A)^{-1} B + D$.
+
+\subsection{Worked Example: Mass--Spring--Damper}
+The plant $G(s) = \frac{1/m}{s^2 + \frac{c}{m} s + \frac{k}{m}}$ yields
+\[
+    A = \begin{bmatrix} 0 & 1 \\ -k/m & -c/m \end{bmatrix}, \quad
+    B = \begin{bmatrix} 0 \\ 1/m \end{bmatrix}, \quad
+    C = \begin{bmatrix} 1 & 0 \end{bmatrix}, \quad
+    D = 0,
+\]
+matching the physics-based derivation in Chapter~\ref{chap:modeling}. The Python snippet
+\begin{lstlisting}[language=python]
+from control import tf, ss
+G = tf([1], [1, 0.4, 4])      # m = 1, c = 0.4, k = 4
+A, B, C, D = ss(G)
+print(A)
+print(B)
+\end{lstlisting}
+confirms the algebra numerically and reinforces the connection between the two viewpoints. Try modifying the transfer function (e.g., adding zeros) and watch how the canonical matrices change.
+
+\section{Controllability and Observability}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Criteria indicating whether inputs can move every state and outputs can reconstruct them.
+    \item[\textbf{Why?}] Feedback and observers fail if the system is uncontrollable or unobservable; these checks prevent wasted design effort.
+    \item[\textbf{When?}] Immediately after forming $(A,B,C,D)$ and before attempting pole placement or estimation.
+    \item[\textbf{How?}] Compute the controllability matrix $\mathcal{C}$ and observability matrix $\mathcal{O}$ and inspect their ranks.
+    \item[\textbf{Example}] Use \texttt{EXPERIMENTS["lqr"].runner()} to print the ranks for the discretised mass--spring--damper, confirming readiness for control design.
+\end{beginnerguide}
+The controllability matrix
+\begin{equation}
+    \mathcal{C} = [B\; AB\; A^2 B\; \dots\; A^{n-1} B]
+\end{equation}
+has full rank ($n$) if the state can be driven to any point in finite time. Observability relies on
+\begin{equation}
+    \mathcal{O} = \begin{bmatrix} C \\ C A \\ \vdots \\ C A^{n-1} \end{bmatrix},
+\end{equation}
+which must also have rank $n$ to reconstruct the state from outputs. Physically, uncontrollable states correspond to modes unaffected by actuators; unobservable states correspond to hidden modes in the measurements.
+
+\subsection{Numerical Check}
+Use the Python experiment
+\begin{lstlisting}[language=bash]
+python demo.py lqr --no-plot
+\end{lstlisting}
+which prints ranks of $\mathcal{C}$ and $\mathcal{O}$ for the discretized mass--spring--damper system, confirming controllability and observability.
+
+\section{Pole Placement}
+\begin{beginnerguide}
+    \item[\textbf{What?}] A method for assigning closed-loop eigenvalues via state feedback.
+    \item[\textbf{Why?}] It gives direct control over system dynamics when full-state feedback is available.
+    \item[\textbf{When?}] After verifying controllability and before exploring optimal control alternatives like LQR.
+    \item[\textbf{How?}] Use Ackermann’s formula or numerical solvers to compute $K$ such that $A-BK$ has desired eigenvalues.
+    \item[\textbf{Example}] Call \texttt{scipy.signal.place\_poles} on a controllable canonical system to place poles at $[-2,-3]$ and compare simulated responses.
+\end{beginnerguide}
+Design a feedback law $u = -K x$ such that $A - B K$ has desired eigenvalues $\{\lambda_i\}$. Ackermann's formula for single-input systems yields
+\begin{equation}
+    K = e_n^T \mathcal{C}^{-1} \phi_d(A),
+\end{equation}
+where $e_n^T = [0\; 0\; \dots\; 1]$ and $\phi_d(A)$ denotes the desired characteristic polynomial evaluated at $A$. Practical workflow:
+\begin{enumerate}[leftmargin=*]
+    \item Choose desired poles based on transient requirements (e.g., match damping ratio and natural frequency).
+    \item Use \texttt{scipy.signal.place\_poles} or control library to compute $K$ and verify eigenvalues numerically.
+    \item Simulate closed-loop response to ensure no actuator saturation or excessive control effort occurs.
+\end{enumerate}
+
+\section{Linear Quadratic Regulation}
+\begin{beginnerguide}
+    \item[\textbf{What?}] An optimal control law balancing state deviations and control effort via the Riccati equation.
+    \item[\textbf{Why?}] LQR offers systematic tuning knobs ($Q$, $R$) and guarantees closed-loop stability for controllable systems.
+    \item[\textbf{When?}] After baseline pole placement when you want performance-effort trade-offs and robustness improvements.
+    \item[\textbf{How?}] Solve the discrete or continuous algebraic Riccati equation, compute $K$, and optionally add a prefilter for tracking.
+    \item[\textbf{Example}] Evaluate \texttt{EXPERIMENTS["lqr"].runner()} to see how different $Q$/$R$ choices alter transient response and control usage.
+\end{beginnerguide}
+LQR minimizes the infinite-horizon cost
+\begin{equation}
+    J = \sum_{k=0}^{\infty} (x_k^T Q x_k + u_k^T R u_k)
+\end{equation}
+subject to $x_{k+1} = A x_k + B u_k$. The solution involves:
+\begin{enumerate}[leftmargin=*]
+    \item Solving the discrete algebraic Riccati equation (DARE)
+    \begin{equation}
+        P = A^T P A - A^T P B (B^T P B + R)^{-1} B^T P A + Q.
+    \end{equation}
+    \item Computing $K = (B^T P B + R)^{-1} B^T P A$.
+    \item Using $u_k = -K x_k$ to close the loop; the closed-loop eigenvalues equal those of $A - B K$ and lie inside the unit circle.
+\end{enumerate}
+Select $Q$ and $R$ to penalize state deviations and control effort. Increasing $Q$ entries tightens state regulation; increasing $R$ reduces control energy at the expense of slower response. To show where the Riccati equation originates, start from the finite-horizon cost
+\[
+J_N = x_N^T P_N x_N + \sum_{k=0}^{N-1} (x_k^T Q x_k + u_k^T R u_k)
+\]
+and minimise it by substituting $u_k = -K_k x_k$. Completing the squares yields the backward recursion
+\begin{align*}
+    P_k &= Q + A^T P_{k+1} A - A^T P_{k+1} B (R + B^T P_{k+1} B)^{-1} B^T P_{k+1} A,\\
+    K_k &= (R + B^T P_{k+1} B)^{-1} B^T P_{k+1} A,
+\end{align*}
+with terminal condition $P_N = P_N^T \succeq 0$. As $N \to \infty$, the matrices converge to $P$ and $K$ that satisfy the steady-state DARE above. Add a short logging loop to the LQR experiment (or call the recursion interactively) to print each $P_k$ so beginners can watch the sequence settle numerically before trusting the steady-state solver.
+
+\subsection{Servo Prefilter}
+To track constant references without steady-state error, compute the prefilter gain
+\begin{equation}
+    N_{\text{bar}} = \frac{1}{C (I - A + B K)^{-1} B}
+\end{equation}
+for single-output systems. The helper \texttt{discrete\_nbar} automates this calculation. The control law becomes $u_k = -K x_k + N_{\text{bar}} r_k$.
+
+\section{Kalman Filtering in Depth}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Optimal state estimation under linear-Gaussian assumptions.
+    \item[\textbf{Why?}] Accurate state estimates enable state-feedback controllers when not all states are measured and quantify uncertainty for diagnostics.
+    \item[\textbf{When?}] After specifying noise covariances and before closing the loop with LQR or other controllers.
+    \item[\textbf{How?}] Propagate predictions with $A$, $B$, update with measurements via the Kalman gain, and tune using innovation statistics.
+    \item[\textbf{Example}] Run \texttt{EXPERIMENTS["kf\_lqr"].runner(return\_logs=True)} to collect innovations and verify tuning against the theoretical covariance.
+\end{beginnerguide}
+The Kalman filter is a probabilistic extension of the Luenberger observer that accounts for process and measurement uncertainty. We begin with the stochastic model
+\begin{align}
+    x_{k+1} &= A x_k + B u_k + w_k, & w_k &\sim \mathcal{N}(0, Q), \label{eq:kalman-process}\\
+    y_k &= C x_k + v_k, & v_k &\sim \mathcal{N}(0, R), \label{eq:kalman-measure}
+\end{align}
+where $w_k$ and $v_k$ are mutually independent Gaussian sequences. The goal is to compute the conditional distribution of $x_k$ given all measurements $y_0,\dots,y_k$; under the linear-Gaussian assumptions this distribution remains Gaussian and is characterized completely by its mean $\hat{x}_{k|k}$ and covariance $P_{k|k}$.
+
+\subsection{Projection Derivation}
+Assume we know $\hat{x}_{k|k}$ and $P_{k|k}$ at time $k$. The one-step-ahead state prediction follows from taking expectations of \eqref{eq:kalman-process}:
+\begin{align}
+    \hat{x}_{k+1|k} &= A \hat{x}_{k|k} + B u_k,\\
+    P_{k+1|k} &= A P_{k|k} A^\top + Q,
+\end{align}
+where $P_{k+1|k}$ is the a priori covariance. When the $(k+1)$-st measurement arrives, we correct the prediction by minimizing the mean-square estimation error:
+\[
+    \hat{x}_{k+1|k+1} = \hat{x}_{k+1|k} + K_{k+1} \bigl(y_{k+1} - C \hat{x}_{k+1|k}\bigr).
+\]
+Choosing $K_{k+1}$ to minimize $\operatorname{tr} P_{k+1|k+1}$ yields the familiar gain expression
+\begin{equation}
+    K_{k+1} = P_{k+1|k} C^\top \bigl(C P_{k+1|k} C^\top + R\bigr)^{-1}, \label{eq:kalman-gain}
+\end{equation}
+and the updated covariance
+\begin{equation}
+    P_{k+1|k+1} = (I - K_{k+1} C) P_{k+1|k}. \label{eq:kalman-cov-update}
+\end{equation}
+Equations \eqref{eq:kalman-process}--\eqref{eq:kalman-cov-update} constitute the discrete Kalman filter. Appendix~\ref{chap:math-appendix} contains the full derivation using conditional expectations and the orthogonality principle for learners interested in the rigorous proof.
+
+\subsection{Innovation Interpretation}
+Define the innovation (or residual)
+\[
+    r_{k+1} = y_{k+1} - C \hat{x}_{k+1|k}.
+\]
+It represents the new information brought by the latest measurement. Its covariance is
+\[
+    S_{k+1} = C P_{k+1|k} C^\top + R,
+\]
+which appears in \eqref{eq:kalman-gain}. Normalizing the innovations via
+\[
+    \nu_{k+1} = r_{k+1}^\top S_{k+1}^{-1} r_{k+1}
+\]
+provides a diagnostic statistic: for a correctly tuned filter, $\nu_{k+1}$ follows a $\chi^2$ distribution with degrees of freedom equal to the measurement dimension. Systematically large values indicate under-modelled process noise ($Q$ too small), while systematically small values imply the opposite.
+
+\subsection{Steady-State Filter and Riccati Link}
+If $(A, C)$ is detectable and $(A, Q^{1/2})$ is stabilizable, the Riccati difference equation converges to a positive-definite solution $P$ satisfying
+\begin{equation}
+    P = A P A^\top + Q - A P C^\top (C P C^\top + R)^{-1} C P A^\top. \label{eq:dares}
+\end{equation}
+Equating $P_{k+1|k} = P$ and $P_{k+1|k+1} = P$ in \eqref{eq:kalman-cov-update} recovers the discrete algebraic Riccati equation, underscoring the duality between optimal control and optimal estimation. The steady-state Kalman gain becomes
+\[
+    K = P C^\top (C P C^\top + R)^{-1},
+\]
+mirroring the LQR gain $K = (B^\top P B + R)^{-1} B^\top P A$ from the previous section.
+
+\subsection{Practical Tuning Workflow}
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Scale the state.} Ensure each state component has comparable units; otherwise $Q$ requires manual rescaling.
+    \item \textbf{Choose baseline covariances.} Start with $Q = q\,I$ where $q$ reflects typical unmodelled accelerations or torques, and set $R$ using the squared sensor standard deviation.
+    \item \textbf{Run the filter and log innovations.} Use the built-in logging hook (see below) to capture $(t, r_k, S_k)$ pairs.
+    \item \textbf{Diagnose.} If $\nu_k$ (normalized innovation squared) consistently exceeds the theoretical expectation, increase the corresponding entries in $Q$. If $\nu_k$ is too small, decrease $Q$ or increase $R$.
+    \item \textbf{Validate closed-loop performance.} Re-run the coupled LQR--Kalman example and examine actuator usage and tracking error.
+\end{enumerate}
+The experiment harness exposes the innovations automatically when invoked with logging enabled:
+\begin{lstlisting}[language=python]
+from scripts.experiments import EXPERIMENTS
+result = EXPERIMENTS["kf_lqr"].runner(return_logs=True)
+innovation_log = result.metadata["innovation_log"]
+t, innov, Sk = innovation_log.T  # unpack time series
+\end{lstlisting}
+Plot $|\text{innov}|$ against $\sqrt{S_k}$ to visualize whether the residuals stay within expected bounds.
+
+\subsection{Case Study 1: Position-Only Sensing}
+Consider the mass--spring--damper with position measurement only. Select
+\[
+    Q = \operatorname{diag}(10^{-4},\, 5\times 10^{-5}), \qquad R = 4\times 10^{-4}.
+\]
+Execute
+\begin{lstlisting}[language=bash]
+python demo.py kf_lqr --no-plot
+\end{lstlisting}
+and observe:
+\begin{itemize}[leftmargin=*]
+    \item convergence of the Kalman gain (velocity reconstruction emerges automatically);
+    \item printed performance metrics showing zero steady-state error when combined with the LQR controller;
+    \item innovation statistics that should match the chosen $Q$, $R$ if the tuning is consistent.
+\end{itemize}
+Increase $Q$ by a factor of ten and rerun the experiment. The estimator responds faster but injects more noise into the control effort---visible in \texttt{figures/modern\_lqr\_controls.png} after regenerating the tutorial plots. Conversely, reducing $Q$ slows the estimator yet yields smoother control.
+
+\subsection{Case Study 2: Sensor Fusion with Bias}
+Extend the model to include a sensor bias $b_k$ by augmenting the state:
+\[
+    x_k^\text{aug} = \begin{bmatrix} x_k \\ b_k \end{bmatrix}, \qquad
+    b_{k+1} = b_k + \eta_k,\quad \eta_k \sim \mathcal{N}(0, \sigma_b^2).
+\]
+Modify \texttt{scripts/experiments.py} accordingly (see comments near the Kalman filter setup) and run the simulation with $\sigma_b = 5\times 10^{-5}$. The augmented filter learns the bias online, reducing steady-state error without sacrificing noise rejection. Compare the logged innovations before and after augmentation to verify that the residual statistics return to nominal levels.
+
+\subsection{Case Study 3: Missing Data and Outliers}
+Kalman filters handle occasional sensor dropouts by skipping the update step. Modify the controller loop to randomly skip updates with probability $p = 0.1$:
+\begin{lstlisting}[language=python]
+if np.random.rand() < 0.1:
+    last_control = sf.step(kf.xhat, reference)  # prediction only
+else:
+    innovation = kf.update(measurement)
+    last_control = sf.step(kf.xhat, reference)
+\end{lstlisting}
+Inspect the innovation log to ensure the covariance $P$ inflates during dropouts, reflecting increased uncertainty. Re-enable the update step when measurements resume and confirm the estimator smoothly re-converges. This exercise illustrates how the Kalman framework naturally extends to imperfect sensing environments, a common scenario in embedded control.
+
+
+\section{Integrated Example: LQR with Kalman Filter}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Combines optimal control and estimation into a full-state-feedback loop using the separation principle.
+    \item[\textbf{Why?}] Demonstrates how controller and observer interact in practice, preparing you for implementation.
+    \item[\textbf{When?}] After designing $K$ and Kalman gains separately, as a final integration step.
+    \item[\textbf{How?}] Discretize the plant, compute LQR and Kalman gains, and simulate the coupled loop.
+    \item[\textbf{Example}] Execute the provided experiment sequence to see tracking performance and estimator convergence for the mass--spring--damper.
+\end{beginnerguide}
+Run
+\begin{lstlisting}[language=bash]
+python demo.py kf_lqr
+\end{lstlisting}
+which performs the following steps:
+\begin{enumerate}[leftmargin=*]
+    \item Discretize the mass--spring--damper system with sampling time $T_s = 0.01$~s.
+    \item Solve the DARE with $Q = \operatorname{diag}(150, 10)$, $R = 0.4$ to obtain $K$.
+    \item Compute the prefilter $N_{\text{bar}}$ for step tracking.
+    \item Run the Kalman filter with $Q_n = \operatorname{diag}(10^{-4}, 10^{-3})$ and $R_n = 10^{-4}$.
+\end{enumerate}
+Metrics such as steady-state error and overshoot are reported; compare them with the pure state-feedback case to appreciate estimator benefits.
+
+\section{Tutorial: LQR and Kalman Practice}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Guided scripting workflow that regenerates figures and metrics for LQR and Kalman designs.
+    \item[\textbf{Why?}] Reinforces theory with reproducible plots and logs, making it easy to experiment with weighting matrices.
+    \item[\textbf{When?}] After understanding the algorithms, as hands-on reinforcement or report preparation.
+    \item[\textbf{How?}] Run \tutorialcmd[--output-dir figures]{modern}, inspect responses, and adjust $Q$, $R$, $Q_n$, $R_n$.
+    \item[\textbf{Example}] Compare \texttt{figures/modern\_lqr\_responses.png} for “tracking” vs. “energy” weightings to see the effect of $Q$/$R$ scaling.
+\end{beginnerguide}
+\begin{enumerate}[leftmargin=*]
+    \item Generate the modern-control figures with\\
+    \tutorialcmd[--output-dir figures]{modern}.
+    \item Use \texttt{figures/modern\_lqr\_responses.png} to compare "tracking" and "energy" weightings in the style suggested by \textcite{ljung2012control}; note how $Q$ and $R$ choices reshape the transient.
+    \item Inspect \texttt{figures/modern\_lqr\_controls.png} to quantify the actuator effort required by each design and relate it to the penalty matrices.
+    \item Study \texttt{figures/modern\_kalman\_tracking.png} to see the Kalman estimate converge toward the true trajectory despite measurement noise; experiment with $Q_n$, $R_n$ inside \texttt{tutorial\_modern} to observe innovation statistics.
+\end{enumerate}
+Exact commands and build automation tips are consolidated in Appendix~\ref{chap:tooling} for quick reference while you work through these exercises.
+\IfFileExists{../figures/modern_lqr_responses.png}{
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.75\linewidth]{../figures/modern_lqr_responses.png}
+        \caption{LQR responses for different weightings produced by \tutorialcmd{modern}.}
+    \end{figure}
+}{
+    \begin{figure}[h]
+        \centering
+        \fbox{\parbox{0.7\linewidth}{Run \tutorialcmd{modern} to create \texttt{figures/modern\_lqr\_responses.png}, then recompile.}}
+        \caption{Placeholder for the LQR comparison plot.}
+    \end{figure}
+}
+\IfFileExists{../figures/modern_lqr_controls.png}{
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.75\linewidth]{../figures/modern_lqr_controls.png}
+        \caption{Control effort comparison for alternative LQR designs.}
+    \end{figure}
+}{
+    \begin{figure}[h]
+        \centering
+        \fbox{\parbox{0.7\linewidth}{Generate \texttt{figures/modern\_lqr\_controls.png} to compare control usage.}}
+        \caption{Placeholder for the LQR control-effort plot.}
+    \end{figure}
+}
+\IfFileExists{../figures/modern_kalman_tracking.png}{
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.75\linewidth]{../figures/modern_kalman_tracking.png}
+        \caption{Kalman-filtered tracking result generated by the modern tutorial script.}
+    \end{figure}
+}{
+    \begin{figure}[h]
+        \centering
+        \fbox{\parbox{0.7\linewidth}{Generate \texttt{figures/modern\_kalman\_tracking.png} to visualize estimator performance.}}
+        \caption{Placeholder for the Kalman tracking plot.}
+    \end{figure}
+}
+
+\section{Design Trade-Offs}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Discussion of how weighting choices, estimator tuning, and actuator limits interplay.
+    \item[\textbf{Why?}] Understanding trade-offs prevents over-aggressive designs and highlights practical constraints.
+    \item[\textbf{When?}] During iterative tuning and before deploying on hardware.
+    \item[\textbf{How?}] Evaluate how changes in $Q$, $R$, $Q_n$, $R_n$ impact transient metrics, control effort, and innovation statistics.
+    \item[\textbf{Example}] Increase $Q$ entries in the tutorial script, observe reduced settling time but higher control effort, and decide acceptable compromises.
+\end{beginnerguide}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Weight selection}: Large $Q$ entries can yield aggressive state regulation but may demand high control effort, risking actuator saturation. Balance with $R$.
+    \item \textbf{Estimator tuning}: Underestimating measurement noise $R$ leads to noisy control inputs; overestimating $Q$ yields sluggish response. Use innovation analysis to refine values.
+    \item \textbf{Reference tracking}: For non-zero steady-state goals, augment the system with integral action or design feedforward prefilters.
+\end{itemize}
+
+\begin{takeaway}
+\begin{itemize}[leftmargin=*]
+    \item Controllability and observability form the foundation of modern control; verify them before attempting advanced designs.
+    \item LQR provides a principled way to balance performance and effort, while prefilters ensure accurate tracking.
+    \item Kalman filtering enables high-performance control despite sensor noise, completing the state-estimation feedback loop.
+\end{itemize}
+\end{takeaway}
+
+\section{Module Review}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Key tests}: controllability matrix $\mathcal{C}$ and observability matrix $\mathcal{O}$ must be full rank before designing feedback or estimators.
+    \item \textbf{LQR summary}: solve the DARE for $P$, compute $K = (B^T P B + R)^{-1} B^T P A$, and use $N_{\text{bar}}$ for steady-state accuracy; interpret $Q$, $R$ weightings with the tutorial overlay in \texttt{figures/modern\_lqr\_responses.png}.
+    \item \textbf{Kalman filter}: tune $Q_n$, $R_n$ using innovation statistics; verify estimator response with Figure~\ref{fig:adaptive-tracking} and \texttt{figures/modern\_kalman\_tracking.png}.
+    \item \textbf{Practice}: regenerate \texttt{figures/modern\_lqr\_responses.png} and modify $Q$, $R$ in \texttt{tutorial\_modern} to see trade-offs described in \textcite{ljung2012control}.
+    \item \textbf{Reading}: \textcite{ljung2012control} Ch.~9--11 for identification-enabled state-space design and \textcite{astrom2006advanced} for practical loop-shaping comparisons.
+\end{itemize}
+
+\section{Keyword Review}
+\begin{vocabulary}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{State}: minimal set of internal variables required to determine future evolution with the input.
+    \item \textbf{Controllability}: ability to reach any state via inputs; captured by the rank of $\mathcal{C}$.
+    \item \textbf{Observability}: ability to reconstruct the state from outputs; captured by the rank of $\mathcal{O}$.
+    \item \textbf{LQR}: optimal state-feedback law obtained by solving a Riccati equation to balance error and control effort.
+    \item \textbf{Kalman gain}: $K = P C^\top (C P C^\top + R)^{-1}$, weighting how much the estimate trusts new measurements.
+    \item \textbf{Separation principle}: controller and observer can be designed independently when the system is controllable and observable.
+\end{itemize}
+\end{vocabulary}

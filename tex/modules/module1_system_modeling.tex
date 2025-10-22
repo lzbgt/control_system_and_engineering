@@ -1,0 +1,306 @@
+\chapter{Modeling Dynamic Systems}
+\label{chap:modeling}
+
+\begin{learningobjective}
+\begin{itemize}[leftmargin=*]
+    \item Build continuous-time models from first principles using Newton--Euler and energy-based methods.
+    \item Linearize nonlinear dynamics about equilibria and express them in state-space and transfer-function forms.
+    \item Discretize continuous-time systems, verify the results numerically, and understand modeling assumptions.
+\end{itemize}
+\end{learningobjective}
+
+\section{Concept Map for Beginners}
+\begin{conceptroadmap}
+\begin{enumerate}[leftmargin=*]
+    \item Start from the physical picture: identify forces, energy storage, and actuation so that each equation has a tangible meaning.
+    \item Translate physics into first-order state equations, emphasising the small handful of calculus and linear algebra identities that make the conversion systematic.
+    \item Close the loop with simulation: every derived matrix feeds directly into a Python helper to confirm intuition with numbers and plots.
+\end{enumerate}
+\end{conceptroadmap}
+
+\section{Concept--Math--Engineering Loop}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{0.28\linewidth}|>{\raggedright\arraybackslash}p{0.34\linewidth}|>{\raggedright\arraybackslash}X|}
+        \hline
+        \textbf{Concept} & \textbf{Mathematics} & \textbf{Engineering Practice} \\
+        \hline
+        Modeling from first principles & Newton--Euler balance, Lagrange energy methods & Sketch free-body diagrams and verify with \texttt{mass\_spring\_damper} or the inverted pendulum notebook. \\
+        \hline
+        State-space representation & Variable substitution, matrix assembly & Use Python to compute $A$, $B$, $C$, $D$ and double-check against manual derivations. \\
+        \hline
+        Discretization and validation & Matrix exponential, zero-order hold integrals & Call \texttt{system.discretize(Ts)} and \texttt{simulate\_discrete\_system} to ensure discrete models match continuous predictions. \\
+        \hline
+    \end{tabularx}
+    \caption{Core ideas in Module~\ref{chap:modeling} and how they iterate between equations and code.}
+\end{table}
+
+\section{Mathematical Background and Modeling Assumptions}
+\begin{beginnerguide}
+    \item[\textbf{What?}] A roadmap for turning physical intuition into differential equations and state-space models.
+    \item[\textbf{Why?}] Clear assumptions and notation prevent algebraic mistakes and make it easier to share models with teammates.
+    \item[\textbf{When?}] Before deriving dynamics for any new system—confirm variables, frames, and disturbance representations.
+    \item[\textbf{How?}] Choose meaningful coordinates, write balance equations, cast them into first-order form, and linearise around equilibria.
+    \item[\textbf{Example}] Define displacement and velocity for a mass--spring--damper, assume linear damping, and obtain $\dot{x} = f(x,u)$ ready for controller design.
+\end{beginnerguide}
+Mechanical, electrical, and thermal systems admit a common structure
+\[
+    \dot{x} = f(x, u, d, t), \qquad y = h(x, u, t),
+\]
+where $x \in \R^n$ collects generalized coordinates and their derivatives, $u$ is the control input, and $d$ represents disturbances. Throughout the module we will:
+\begin{enumerate}[leftmargin=*]
+    \item choose $x$ using minimal coordinates (e.g., position, velocity);
+    \item derive governing equations via Newton--Euler or Lagrange methods;
+    \item cast the dynamics into first-order state-space form;
+    \item linearize about equilibria and relate the result to transfer functions;
+    \item discretize the continuous model to interface with digital controllers.
+\end{enumerate}
+The workflow mirrors the scalar Kalman derivation supplied in \texttt{kalman\_deduction.tex}: begin with first principles, manipulate equations line-by-line, summarize the final form, and map each algebraic operation to executable Python.
+
+\section{Mass--Spring--Damper Derivation}
+\begin{beginnerguide}
+    \item[\textbf{What?}] A canonical second-order system used to illustrate the entire modelling pipeline.
+    \item[\textbf{Why?}] Its simplicity reveals each modelling step without unnecessary algebraic clutter, serving as a reusable template.
+    \item[\textbf{When?}] Whenever you need a baseline example to test new controllers or estimation ideas.
+    \item[\textbf{How?}] Apply Newton’s second law, convert to first-order state form, and validate with Python helpers.
+    \item[\textbf{Example}] Derive $A=\begin{bmatrix}0&1\\-k/m&-c/m\end{bmatrix}$, then call \texttt{mass\_spring\_damper().linearize\_about\_equilibrium()} to confirm the matrices match theory.
+\end{beginnerguide}
+\subsection{Step 1: Coordinate and Force Definition}
+Let $x$ be the displacement from equilibrium. Applying Newton's second law to the mass $m$ with spring constant $k$ and viscous damping $c$ gives
+\[
+    m \ddot{x} = -k x - c \dot{x} + u.
+\]
+
+\subsection{Step 2: First-Order State Representation}
+Introduce the state vector $x_1 = x$, $x_2 = \dot{x}$. The system becomes
+\begin{align*}
+    \dot{x}_1 &= x_2,\\
+    \dot{x}_2 &= -\frac{k}{m} x_1 - \frac{c}{m} x_2 + \frac{1}{m} u.
+\end{align*}
+Stacking the equations yields
+\[
+    \dot{x} = \begin{bmatrix} 0 & 1 \\ -k/m & -c/m \end{bmatrix} x + \begin{bmatrix} 0 \\ 1/m \end{bmatrix} u,\qquad
+    y = \begin{bmatrix} 1 & 0 \end{bmatrix} x.
+\]
+
+\subsection{Step 3: Energy Cross-Check}
+The kinetic and potential energies,
+\[
+    T = \tfrac{1}{2} m \dot{x}^2,\qquad V = \tfrac{1}{2} k x^2,
+\]
+produce the same dynamics via Lagrange's equation. This is a useful consistency check when multiple derivation paths exist.
+
+\subsection{Final Formulas and Code Mapping}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{4cm}|X|X|}
+        \hline
+        \textbf{Python Code (snippet)} & \textbf{Mathematical Expression} & \textbf{Explanation} \\
+        \hline
+        \texttt{system = mass\_spring\_damper(m, c, k)} & $m \ddot{x} + c \dot{x} + k x = u$ & Constructs the physical model parameters used in subsequent calculations. \\
+        \hline
+        \texttt{system.A, system.B, system.C} & $A = \begin{bmatrix}0 & 1 \\ -k/m & -c/m\end{bmatrix}$, $B = \begin{bmatrix}0 \\ 1/m\end{bmatrix}$, $C = [1\;0]$ & Exposes the state-space matrices derived above. \\
+        \hline
+        \texttt{system.transfer\_function()} & $G(s) = C (s I - A)^{-1} B + D$ & Confirms equivalence between state-space and transfer-function representations. \\
+        \hline
+    \end{tabularx}
+    \caption{Mapping the MSD derivation to \texttt{scripts/dynamics.py}.}
+\end{table}
+
+\subsection{Numerical Validation}
+Run the open-loop script:
+\begin{lstlisting}[language=python]
+from scripts.dynamics import mass_spring_damper
+from scripts.simulation import simulate_discrete_system
+
+system = mass_spring_damper(m=1.0, c=0.4, k=4.0)
+Ts = 0.005
+plant_d = system.discretize(Ts)
+step = lambda k: 0.01 if k >= 1 else 0.0
+
+result = simulate_discrete_system(
+    plant_d.A, plant_d.B, plant_d.C,
+    controller_step=lambda r, y, t: 0.0,
+    ts=Ts, steps=2000, reference=step,
+)
+print(result.performance_metrics())
+\end{lstlisting}
+Confirm that the response agrees with the analytic solution
+\[
+    x(t) = \mathrm{e}^{A t} x(0) + \int_{0}^{t} \mathrm{e}^{A (t - \tau)} B u(\tau)\,\mathrm{d}\tau.
+\]
+
+\section{Inverted Pendulum Linearization}
+\begin{beginnerguide}
+    \item[\textbf{What?}] A nonlinear benchmark that demonstrates Jacobian-based linearisation for an underactuated system.
+    \item[\textbf{Why?}] Many real-world plants resemble the cart–pendulum; understanding its linearisation builds intuition for balancing problems.
+    \item[\textbf{When?}] Before designing controllers such as LQR or swing-up strategies that assume a linear model around the upright equilibrium.
+    \item[\textbf{How?}] Derive the nonlinear equations, compute partial derivatives at the equilibrium, and assemble $A$ and $B$ matrices.
+    \item[\textbf{Example}] Use the supplied SymPy notebook to generate $A$ and $B$, then verify controllability in Python.
+\end{beginnerguide}
+\subsection{Step 1: Nonlinear Dynamics}
+For the cart--pendulum system,
+\begin{align*}
+    (M + m)\ddot{x} + m\ell \ddot{\theta}\cos\theta - m\ell \dot{\theta}^2 \sin\theta &= u,\\
+    \ddot{\theta} + \frac{g}{\ell}\sin\theta &= -\frac{\ddot{x}}{\ell}\cos\theta.
+\end{align*}
+
+\subsection{Step 2: Linearization About Upright Equilibrium}
+Set $(x,\theta,\dot{x},\dot{\theta}) = (0,0,0,0)$ and $u=0$. Compute Jacobians:
+\begin{align*}
+    A &= \begin{bmatrix}
+        0 & 0 & 1 & 0 \\
+        0 & 0 & 0 & 1 \\
+        0 & \frac{m g}{M} & 0 & 0 \\
+        0 & \frac{(M + m) g}{M \ell} & 0 & 0
+    \end{bmatrix}, &
+    B &= \begin{bmatrix}
+        0 \\ 0 \\ 1/M \\ 1/(M\ell)
+    \end{bmatrix}.
+\end{align*}
+These are obtained by differentiating each component $f_i$ of $\dot{x} = f(x,u)$ with respect to the state and input, mirroring the step-by-step gradients shown in \texttt{kalman\_deduction.tex}.
+
+\subsection{Step 3: Code Mapping}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{4cm}|X|X|}
+        \hline
+        \textbf{Python} & \textbf{Formula} & \textbf{Comment} \\
+        \hline
+        \texttt{notebooks/01\_linearization.ipynb} & $\partial f/\partial x$, $\partial f/\partial u$ & SymPy script reproduces each Jacobian entry. \\
+        \hline
+        \texttt{system.linearize()} & $A, B$ above & Verifies the linearized model programmatically. \\
+        \hline
+    \end{tabularx}
+    \caption{Inverted pendulum linearization traceability.}
+\end{table}
+
+\section{Transfer-Function Connection}
+\begin{beginnerguide}
+    \item[\textbf{What?}] The algebra that links state-space models to transfer functions and vice versa.
+    \item[\textbf{Why?}] Switching representations lets you use whichever analysis tool—time or frequency domain—is most convenient.
+    \item[\textbf{When?}] After deriving a state-space model but before plotting Bode or Nyquist diagrams that rely on transfer functions.
+    \item[\textbf{How?}] Take Laplace transforms, solve for $X(s)$ and $Y(s)$, and reduce the expression to $G(s)=C(sI-A)^{-1}B + D$.
+    \item[\textbf{Example}] Show that the mass--spring--damper produces $G(s)=\frac{1/m}{s^2+(c/m)s+k/m}$, matching the transfer function computed by \texttt{system.transfer\_function()}.
+\end{beginnerguide}
+\subsection{Step-by-Step Derivation}
+Starting from the state-space model $(A,B,C,D)$, take Laplace transforms (zero initial state for simplicity):
+\begin{align*}
+    s X(s) &= A X(s) + B U(s),\\
+    Y(s) &= C X(s) + D U(s).
+\end{align*}
+Solve for $X(s) = (s I - A)^{-1} B U(s)$ and substitute into the output:
+\[
+    G(s) = \frac{Y(s)}{U(s)} = C (s I - A)^{-1} B + D.
+\]
+For the MSD parameters $(m,c,k)$,
+\[
+    G(s) = \frac{1/m}{s^2 + (c/m) s + k/m}.
+\]
+The poles at $s = -\tfrac{c}{2m} \pm \mathrm{j} \sqrt{k/m - c^2/(4m^2)}$ reveal the system's natural frequency and damping ratio, providing checks against time-domain intuition.
+
+\subsection{Summary}
+\begin{itemize}[leftmargin=*]
+    \item State-space and transfer-function forms are two sides of the same coin for LTI systems.
+    \item The inverse $(sI - A)^{-1}$ encodes modal behaviour; each pole of $G(s)$ corresponds to an eigenvalue of $A$.
+    \item Use \texttt{system.transfer\_function()} to confirm algebraic manipulations numerically.
+\end{itemize}
+
+\section{Zero-Order Hold Discretization}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Converting continuous dynamics to discrete time under piecewise-constant inputs.
+    \item[\textbf{Why?}] Digital controllers sample signals; accurate discretisation preserves stability and performance predictions.
+    \item[\textbf{When?}] After modelling a continuous plant and before implementing discrete control laws.
+    \item[\textbf{How?}] Evaluate $\mathrm{e}^{A T_s}$ and the integral for $B_d$, often using the block-matrix exponential trick.
+    \item[\textbf{Example}] Compute discrete matrices for the mass--spring--damper at $T_s=5$~ms and compare with \texttt{system.discretize(Ts)} to confirm numerical agreement.
+\end{beginnerguide}
+\subsection{Derivation}
+Assume $u(t)$ is constant over $[kT_s, (k+1)T_s)$:
+\begin{align*}
+    x((k+1)T_s) &= \mathrm{e}^{A T_s} x(kT_s) + \int_{0}^{T_s} \mathrm{e}^{A \tau} B\,\mathrm{d}\tau\, u[k]\\
+    &\equiv A_d x[k] + B_d u[k].
+\end{align*}
+To compute $A_d$ and $B_d$, form the block matrix
+\[
+    M = \begin{bmatrix} A & B \\ 0 & 0 \end{bmatrix}, \qquad
+    \mathrm{e}^{M T_s} = \begin{bmatrix} A_d & B_d \\ 0 & I \end{bmatrix}.
+\]
+
+\subsection{Numerical Example}
+With $m=1$, $c=0.4$, $k=4$, $T_s = 5$~ms,
+\[
+    A_d = \begin{bmatrix} 0.9990 & 0.00499 \\ -0.0199 & 0.9960 \end{bmatrix},\qquad
+    B_d = \begin{bmatrix} 1.25\times 10^{-5} \\ 0.00499 \end{bmatrix}.
+\]
+Verify via \texttt{SystemMatrix.discretize(Ts)} in \texttt{scripts/dynamics.py} or with SciPy's \texttt{expm}.
+
+\subsection{Code Mapping}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{4cm}|X|X|}
+        \hline
+        \textbf{Python} & \textbf{Formula} & \textbf{Explanation} \\
+        \hline
+        \texttt{plant\_d = system.discretize(Ts)} & $A_d = \mathrm{e}^{A T_s}$, $B_d = \int_{0}^{T_s} \mathrm{e}^{A \tau} B\,\mathrm{d}\tau$ & Helper computes the matrix exponential and integral via the block-matrix trick. \\
+        \hline
+        \texttt{simulate\_discrete\_system(...)} & $x_{k+1} = A_d x_k + B_d u_k$ & Simulator uses the discrete model directly for validation. \\
+        \hline
+    \end{tabularx}
+    \caption{Discretization formulas versus code.}
+\end{table}
+
+\section{Model Validation, Identification, and Refinement}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Techniques for tuning model parameters and checking fidelity against data.
+    \item[\textbf{Why?}] Even elegant derivations drift from reality—validation ensures controllers act on trustworthy models.
+    \item[\textbf{When?}] After initial modelling and whenever real measurements reveal mismatches.
+    \item[\textbf{How?}] Fit parameters via residual minimisation, analyse innovations, and augment models when systematic errors remain.
+    \item[\textbf{Example}] Use the identification notebook to estimate damping $c$ from step-response data and observe the improvement in simulation accuracy.
+\end{beginnerguide}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Parameter identification}: fit unknown constants (e.g., $c$, $k$) by minimizing the squared innovation between measured and simulated outputs. See \texttt{notebooks/02\_identification.ipynb}.
+    \item \textbf{Unmodelled dynamics}: append additional poles/zeros or disturbance states when residuals exhibit systematic structure.
+    \item \textbf{Model reduction}: apply balanced truncation to high-order finite-element models to retain dominant modes without overburdening real-time controllers.
+\end{itemize}
+
+\section{Hands-On Practice}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Guided exercises to reinforce modelling concepts with executable experiments.
+    \item[\textbf{Why?}] Practice cements theory and reveals practical issues like sensitivity to parameter changes.
+    \item[\textbf{When?}] Immediately after reading the chapter—hands-on repetition shortens the feedback loop between learning and application.
+    \item[\textbf{How?}] Run the provided tutorial scripts, perturb parameters, and inspect the resulting figures.
+    \item[\textbf{Example}] Execute \tutorialcmd[--output-dir figures]{modeling} and compare the generated step plot with analytic predictions.
+\end{beginnerguide}
+\begin{enumerate}[leftmargin=*]
+    \item Generate comparison plots with \tutorialcmd[--output-dir figures]{modeling}. Inspect \texttt{figures/modeling\_step.png} to verify discretization accuracy.
+    \item Perturb $m$, $c$, or $k$ and re-run the tutorial to see how pole locations and transient metrics move.
+    \item Evaluate the innovation sequence from \texttt{simulate\_discrete\_system} when parameter identification is active; use it to tune modelling assumptions before designing controllers.
+\end{enumerate}
+Appendix~\ref{chap:tooling} lists the exact \texttt{make} targets and plotting commands if you need a refresher while working through these exercises.
+
+\begin{takeaway}
+\begin{itemize}[leftmargin=*]
+    \item Start from physics, linearize carefully, and always connect algebra to executable code.
+    \item Transfer functions and state-space models provide complementary insights—use both.
+    \item Discretization bridges continuous models with digital controllers; validate numerically before deployment.
+\end{itemize}
+\end{takeaway}
+
+\section{Keyword Review}
+\begin{vocabulary}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{State-space model}: the pair $(A, B, C, D)$ describing $\dot{x} = A x + B u$, $y = C x + D u$.
+    \item \textbf{Linearization}: first-order Taylor expansion that turns nonlinear dynamics into an approximate linear model.
+    \item \textbf{Transfer function}: $G(s) = C (s I - A)^{-1} B + D$ mapping inputs to outputs in the Laplace domain.
+    \item \textbf{Zero-order hold}: the assumption of piecewise-constant inputs used when discretizing continuous systems.
+    \item \textbf{Model validation}: comparing simulated responses and innovations against data to judge fidelity.
+\end{itemize}
+\end{vocabulary}

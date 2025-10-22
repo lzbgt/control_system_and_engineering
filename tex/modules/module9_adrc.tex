@@ -1,0 +1,305 @@
+\chapter{Active Disturbance Rejection Control (ADRC)}
+\label{chap:adrc}
+
+\begin{learningobjective}
+\begin{itemize}[leftmargin=*]
+    \item Build a formal understanding of the ADRC architecture: tracking differentiator, extended state observer (ESO), and disturbance-compensating controller.
+    \item Derive the linear ADRC (LADRC) equations for second-order plants and connect the bandwidth design rules to pole-placement theory \parencite{gao2006active}.
+    \item Analyse closed-loop stability and disturbance rejection through characteristic polynomials and Lyapunov arguments as in \textcite{han2009auto}.
+    \item Apply the theory to a mass--spring--damper case study with multiple bandwidth selections, supported by reproducible Python tutorials.
+\end{itemize}
+\end{learningobjective}
+
+\section{Concept Map for Beginners}
+\begin{conceptroadmap}
+\begin{enumerate}[leftmargin=*]
+    \item View ADRC as ``estimate the disturbance, then cancel it''—this story makes the extended state and observer gains feel natural.
+    \item Walk through the ESO pole placement slowly; it is just classical observer design with a different target polynomial.
+    \item Relate bandwidth choices to everyday terms: a faster ESO hears disturbances quickly, while controller bandwidth sets how aggressively you respond.
+\end{enumerate}
+\end{conceptroadmap}
+
+\section{Concept--Math--Engineering Loop}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{0.28\linewidth}|>{\raggedright\arraybackslash}p{0.34\linewidth}|>{\raggedright\arraybackslash}X|}
+        \hline
+        \textbf{Concept} & \textbf{Mathematics} & \textbf{Engineering Practice} \\
+        \hline
+        ADRC architecture & Extended state definition, disturbance lumping & Sketch block diagrams labelling measured states, estimated disturbance, and compensation path. \\
+        \hline
+        ESO design & Pole placement via $(s + \omega_0)^3$ & Run \texttt{tutorial\_adrc} to print \texttt{np.linalg.eigvals(A\_o - L @ C)} and confirm gains. \\
+        \hline
+        Bandwidth tuning & Characteristic polynomials, gain scheduling & Compare \texttt{figures/adrc\_responses.png} across bandwidth sets to see predicted transient changes. \\
+        \hline
+    \end{tabularx}
+    \caption{How Module~\ref{chap:adrc} ties the ADRC concept to algebra and reproducible simulations.}
+\end{table}
+
+\section{Architecture Overview}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Presents the three-block ADRC structure: tracking differentiator, extended state observer, and disturbance-compensating controller.
+    \item[\textbf{Why?}] Understanding each block clarifies how ADRC achieves robustness without detailed plant models.
+    \item[\textbf{When?}] Before deriving equations or tuning bandwidths for a specific plant.
+    \item[\textbf{How?}] Express the plant with an extended state, design the ESO, and define the control law that cancels the disturbance estimate.
+    \item[\textbf{Example}] Draw the ADRC block diagram for a second-order plant and identify where each estimated state feeds back into the control input.
+\end{beginnerguide}
+The ADRC philosophy treats unknown dynamics $f(t)$ and disturbances as an extended state. A canonical second-order plant is written as
+\begin{equation}
+    \ddot{y} = f(t, y, \dot{y}) + b u, \qquad b > 0,
+    \label{eq:adrc-plant}
+\end{equation}
+where $b$ is the nominal control gain. ADRC comprises three blocks:
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Tracking Differentiator (TD)} (optional in LADRC): filters the reference signal and generates smooth derivatives.
+    \item \textbf{Extended State Observer (ESO)}: estimates $y$, $\dot{y}$, and the lumped disturbance $f$.
+    \item \textbf{Nonlinear or linear feedback law}: cancels the disturbance estimate and imposes desired dynamics on the remaining subsystem.
+\end{enumerate}
+This chapter focuses on the widely used linear ADRC variant where the TD is replaced by a simple second-order reference model.
+
+\section{Linear ADRC Derivation}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Step-by-step derivation of the linearised ADRC equations for second-order systems.
+    \item[\textbf{Why?}] Provides explicit formulas for ESO gains and feedback coefficients needed in software implementations.
+    \item[\textbf{When?}] After introducing the architecture and before coding the controller.
+    \item[\textbf{How?}] Form the extended state, place observer poles via $(s+\omega_0)^3$, and design the feedback law with desired closed-loop bandwidth $\omega_c$.
+    \item[\textbf{Example}] Compute $\beta_1=3\omega_0$, $\beta_2=3\omega_0^2$, $\beta_3=\omega_0^3$ for $\omega_0=200$~rad/s and verify numerically that \texttt{np.linalg.eigvals(A\_o - L @ C)} returns all poles at $-200$.
+\end{beginnerguide}
+Introduce the extended state $x_e = [x_1\; x_2\; x_3]^T = [y\; \dot{y}\; f]$. The ESO is designed such that the estimation error dynamics follow a third-order stable polynomial.
+\subsection{Extended State Observer}
+Define the observer
+\begin{align}
+    \dot{\hat{x}}_1 &= \hat{x}_2 - \beta_1 (\hat{x}_1 - y), \label{eq:eso1}\\
+    \dot{\hat{x}}_2 &= \hat{x}_3 - \beta_2 (\hat{x}_1 - y) + b u, \label{eq:eso2}\\
+    \dot{\hat{x}}_3 &= -\beta_3 (\hat{x}_1 - y), \label{eq:eso3}
+\end{align}
+with gains
+\begin{equation}
+    \beta_1 = 3 \omega_0, \qquad \beta_2 = 3 \omega_0^2, \qquad \beta_3 = \omega_0^3,
+    \label{eq:eso-gains}
+\end{equation}
+where $\omega_0$ is the observer bandwidth. The pole placement is explicit: the error dynamics matrix is
+\[
+    A_o - L C =
+    \begin{bmatrix}
+        -\beta_1 & 1 & 0 \\
+        -\beta_2 & 0 & 1 \\
+        -\beta_3 & 0 & 0
+    \end{bmatrix},
+\]
+whose characteristic polynomial is
+\[
+    \det(s I - (A_o - L C)) = s^3 + \beta_1 s^2 + \beta_2 s + \beta_3.
+\]
+Setting this polynomial equal to $(s + \omega_0)^3 = s^3 + 3 \omega_0 s^2 + 3 \omega_0^2 s + \omega_0^3$ yields the gain triplet in \eqref{eq:eso-gains}. Insert a diagnostic print in \texttt{tutorial\_adrc} to evaluate \texttt{np.linalg.eigvals(A\_o - L @ C)} and confirm numerically that all poles equal $-\omega_0$. Substituting \eqref{eq:eso1}--\eqref{eq:eso3} with these gains reveals that the error dynamics satisfy
+\begin{equation}
+    e^{(3)} + 3 \omega_0 e^{(2)} + 3 \omega_0^2 e^{(1)} + \omega_0^3 e = 0,
+\end{equation}
+analogous to placing the observer poles at $-\omega_0$. In discrete implementation we use Euler integration in the tutorial to remain consistent with control-loop timing.
+
+\subsection{Control Law and Closed-Loop Poles}
+The compensated control input is
+\begin{equation}
+    u = \frac{v - \hat{x}_3}{b}, \qquad v = k_p (r - \hat{x}_1) - k_d \hat{x}_2,
+    \label{eq:adrc-control}
+\end{equation}
+with feedback gains chosen according to the desired closed-loop polynomial
+\begin{equation}
+    s^2 + 2 \omega_c s + \omega_c^2 = 0, \qquad k_p = \omega_c^2, \quad k_d = 2 \omega_c.
+\end{equation}
+Combining \eqref{eq:adrc-plant} with \eqref{eq:adrc-control} yields the characteristic polynomial
+\begin{equation}
+    s^2 + 2 \omega_c s + \omega_c^2 = 0,
+\end{equation}
+indicating that perfect disturbance cancellation reduces the plant to a double integrator with bandwidth $\omega_c$. In practice $\hat{x}_3$ approximates $f$, so robustness hinges on the ESO’s ability to track $f$ faster than the closed-loop dynamics (typically $\omega_0 \geq 3 \omega_c$).
+
+\subsection{Code Mapping}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{4cm}|X|X|}
+        \hline
+        \textbf{Python} & \textbf{Formula} & \textbf{Explanation} \\
+        \hline
+        \texttt{build\_eso()} & $\beta_1 = 3\omega_0$, $\beta_2 = 3\omega_0^2$, $\beta_3 = \omega_0^3$ & Utility in \texttt{tutorials.adrc} that generates ESO gains from the bandwidth rule. \\
+        \hline
+        \texttt{design\_controller()} & $k_p = \omega_c^2$, $k_d = 2\omega_c$, $u = (v - \hat{x}_3)/b$ & Implements the linear ADRC control law once $\omega_c$ and $b$ are specified. \\
+        \hline
+    \end{tabularx}
+    \caption{Mapping LADRC formulas to the tutorial code.}
+\end{table}
+
+\section{Stability and Disturbance Rejection}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Analyses how ESO accuracy and bandwidth choices influence closed-loop stability and disturbance suppression.
+    \item[\textbf{Why?}] Ensures ADRC configurations remain stable when disturbances or modelling errors occur.
+    \item[\textbf{When?}] After deriving the control law to check robustness before hardware deployment.
+    \item[\textbf{How?}] Examine characteristic polynomials, Lyapunov functions, and frequency-domain interpretations.
+    \item[\textbf{Example}] Show that choosing $\omega_0 \ge 3\omega_c$ maintains small estimation error and plot residual disturbances using the tutorial scripts.
+\end{beginnerguide}
+\subsection{Error Dynamics}
+Define the estimation error $\tilde{x} = x_e - \hat{x}$. From \eqref{eq:eso1}--\eqref{eq:eso3} the error dynamics are
+\begin{equation}
+    \dot{\tilde{x}} = (A_o - L C) \tilde{x} + [0\; 0\; \dot{f}]^T,
+\end{equation}
+with
+\begin{equation}
+    A_o = \begin{bmatrix} 0 & 1 & 0 \\ 0 & 0 & 1 \\ 0 & 0 & 0 \end{bmatrix}, \quad L = [\beta_1\; \beta_2\; \beta_3]^T, \quad C = [1\; 0\; 0].
+\end{equation}
+The homogeneous part has eigenvalues at $-\omega_0$ (triple pole). If $f$ is slowly varying, $\dot{f}$ acts as a small perturbation, yielding bounded estimation error. This motivates the tuning guideline $\omega_0 \gg$ dominant frequencies of $f$.
+
+\subsection{Lyapunov Interpretation}
+Following \textcite{han2009auto}, choose the Lyapunov function $V = \tilde{x}^T P \tilde{x}$ where $P$ solves the Lyapunov equation
+\begin{equation}
+    (A_o - L C)^T P + P (A_o - L C) = -Q,
+\end{equation}
+for $Q \succ 0$. With the gain selection \eqref{eq:eso-gains}, $A_o - L C$ is Hurwitz for any $\omega_0 > 0$, guaranteeing exponential convergence of $\tilde{x}$ in the absence of disturbance derivatives. The controller in \eqref{eq:adrc-control} then renders the closed-loop error dynamics
+\begin{equation}
+    \ddot{e} + 2 \omega_c \dot{e} + \omega_c^2 e = \tilde{x}_3,
+\end{equation}
+illustrating that disturbances are attenuated according to the ESO error.
+
+\section{Tuning Workflow}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Practical steps for selecting bandwidths, controller gains, and noise filters in ADRC.
+    \item[\textbf{Why?}] A disciplined tuning procedure accelerates deployment and avoids guesswork.
+    \item[\textbf{When?}] When adapting ADRC to a new plant or retuning after requirement changes.
+    \item[\textbf{How?}] Pick target $\omega_c$, set $\omega_0$, adjust gain scaling, and iterate with simulation feedback.
+    \item[\textbf{Example}] Follow the provided table of slow/medium/fast bandwidths and evaluate resulting step responses to choose a balanced configuration.
+\end{beginnerguide}
+\begin{enumerate}[leftmargin=*]
+    \item Choose the tracking bandwidth $\omega_c$ based on transient requirements (settling time roughly $4/\omega_c$).
+    \item Set the observer bandwidth $\omega_0$ between three and five times $\omega_c$ to ensure fast disturbance estimation without amplifying measurement noise \parencite{gao2006active}.
+    \item Validate the design via simulation, examining both tracking and control effort.
+    \item If large measurement noise is present, reduce $\omega_0$ and consider filtering the measured output.
+    \item For plants with uncertain $b$, identify or adaptively estimate the gain using techniques from Chapter~\ref{chap:learning}.
+\end{enumerate}
+
+\section{Case Study: Mass--Spring--Damper}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Applies ADRC formulas to a familiar second-order plant with quantifiable performance.
+    \item[\textbf{Why?}] Demonstrates how tuning selections translate into measurable overshoot, settling time, and control effort.
+    \item[\textbf{When?}] After learning the general workflow—use the case as a reference implementation.
+    \item[\textbf{How?}] Implement ESO and controller gains, impose actuator limits, and compare bandwidth configurations.
+    \item[\textbf{Example}] Run \tutorialcmd[--output-dir figures]{adrc}\\and inspect \texttt{figures/adrc\_responses.png} to compare slow/medium/fast designs.
+\end{beginnerguide}
+For $m=1$, $c=0.4$, $k=4$ the nominal input gain is $b=1$. We compare three bandwidth selections:
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Scenario & $\omega_c$ & $\omega_0$ \\ \midrule
+Slow & $40$ & $120$ \\
+Medium & $80$ & $200$ \\
+Fast & $120$ & $300$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+The simulations include actuator saturation at $\pm 7$~N to highlight practical limitations. Steady-state error and percent overshoot for each case are printed by the tutorial script.
+
+\section{Tutorial: ADRC Walkthrough}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Script-driven exploration of ADRC responses, control effort, and observer errors.
+    \item[\textbf{Why?}] Visual feedback solidifies how bandwidth choices affect tracking and disturbance rejection.
+    \item[\textbf{When?}] After derivations, during tuning, or when preparing documentation.
+    \item[\textbf{How?}] Execute the tutorial, generate response/control/ESO plots, and adjust parameters to see their impact.
+    \item[\textbf{Example}] Modify $\omega_c$ in the script, regenerate plots, and note how control saturation increases for aggressive bandwidths.
+\end{beginnerguide}
+\begin{enumerate}[leftmargin=*]
+    \item Run \tutorialcmd[--output-dir figures]{adrc}.\\
+    \item Analyse Figure~\ref{fig:adrc-responses} to see how bandwidth choice affects transient metrics.
+    \item Examine Figure~\ref{fig:adrc-controls} to understand the variation in control effort and saturation utilisation.
+    \item Study Figure~\ref{fig:adrc-eso} to evaluate ESO estimation error and confirm convergence consistent with the Lyapunov discussion above.
+    \item Modify parameters in \texttt{tutorial\_adrc} to explore robustness against plant parameter mismatch and measurement noise.
+\end{enumerate}
+See Appendix~\ref{chap:tooling} for the standard command palette that recreates these ADRC experiments and keeps figures in sync with the notes.
+\IfFileExists{../figures/adrc_responses.png}{
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.75\linewidth]{../figures/adrc_responses.png}
+        \caption{ADRC step responses for multiple bandwidth selections.}
+        \label{fig:adrc-responses}
+    \end{figure}
+}{
+    \begin{figure}[h]
+        \centering
+        \fbox{\parbox{0.7\linewidth}{Run the ADRC tutorial to create \texttt{figures/adrc\_responses.png}, then recompile.}}
+        \caption{Placeholder for ADRC step responses.}
+        \label{fig:adrc-responses}
+    \end{figure}
+}
+\IfFileExists{../figures/adrc_controls.png}{
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.75\linewidth]{../figures/adrc_controls.png}
+        \caption{Control effort comparison across ADRC bandwidths.}
+        \label{fig:adrc-controls}
+    \end{figure}
+}{
+    \begin{figure}[h]
+        \centering
+        \fbox{\parbox{0.7\linewidth}{Generate \texttt{figures/adrc\_controls.png} to visualise ADRC control effort.}}
+        \caption{Placeholder for ADRC control effort.}
+        \label{fig:adrc-controls}
+    \end{figure}
+}
+\IfFileExists{../figures/adrc_eso_errors.png}{
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.75\linewidth]{../figures/adrc_eso_errors.png}
+        \caption{ESO estimation error for the medium-bandwidth design.}
+        \label{fig:adrc-eso}
+    \end{figure}
+}{
+    \begin{figure}[h]
+        \centering
+        \fbox{\parbox{0.7\linewidth}{Generate \texttt{figures/adrc\_eso\_errors.png} to inspect ESO convergence.}}
+        \caption{Placeholder for ESO estimation error.}
+        \label{fig:adrc-eso}
+    \end{figure}
+}
+
+\section{Discussion and Further Reading}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Highlights extensions, research directions, and connections to broader ADRC literature.
+    \item[\textbf{Why?}] Guides further study and contextualises the linear ADRC variant within the wider field.
+    \item[\textbf{When?}] After mastering the basics and seeking advanced topics such as MIMO or nonlinear ADRC.
+    \item[\textbf{How?}] Review recommended papers, compare methodologies, and identify scenarios where advanced observers add value.
+    \item[\textbf{Example}] Read \textcite{gao2006active} and replicate their higher-order ESO design using the provided code scaffold.
+\end{beginnerguide}
+The LADRC design summarised here linearises the broader nonlinear ADRC methodology in \textcite{han2009auto}. Extensions include:
+\begin{itemize}[leftmargin=*]
+    \item Higher-order plants and multivariable systems using generalised ESOs \parencite{gao2006active}.
+    \item Integration with learning-based gain identification (Chapter~\ref{chap:learning}) to adapt to changing plant gains.
+    \item Nonlinear ADRC variants where the observer uses saturation functions to improve robustness to noise.
+\end{itemize}
+
+\begin{takeaway}
+\begin{itemize}[leftmargin=*]
+    \item ADRC delivers disturbance rejection without detailed plant models, making it attractive to beginners once the ESO concept is internalised.
+    \item Formal analysis shows that bandwidth choices correspond to explicit pole locations, providing a concrete tuning recipe.
+    \item Simulation and tutorial scripts bridge the gap between closed-form derivations and practical implementation, preparing learners for advanced ADRC literature.
+\end{itemize}
+\end{takeaway}
+
+\section{Module Review}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Architecture}: separate reference smoothing, extended state observation, and disturbance-compensating feedback.
+    \item \textbf{ESO gains}: $\beta_1 = 3\omega_0$, $\beta_2 = 3\omega_0^2$, $\beta_3 = \omega_0^3$ place observer poles at $-\omega_0$.
+    \item \textbf{Control law}: $u = (v - \hat{x}_3)/b$ with $k_p = \omega_c^2$, $k_d = 2\omega_c$ imposes desired second-order dynamics.
+    \item \textbf{Bandwidth heuristic}: choose $\omega_0 \ge 3 \omega_c$ so disturbance estimates keep pace with the controller.
+    \item \textbf{Practice}: run \tutorialcmd{adrc}\\and vary $(\omega_c, \omega_0)$ to observe trade-offs in Figures~\ref{fig:adrc-responses}--\ref{fig:adrc-eso}.
+\end{itemize}
+
+\section{Keyword Review}
+\begin{vocabulary}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{ADRC}: Active Disturbance Rejection Control; framework that estimates and cancels disturbances via an extended state.
+    \item \textbf{Extended State Observer (ESO)}: observer estimating plant state and lumped disturbance with gains tied to $\omega_0$.
+    \item \textbf{Bandwidth $\omega_c$, $\omega_0$}: controller and observer speed parameters guiding transient response and estimation speed.
+    \item \textbf{Disturbance estimate $\hat{x}_3$}: online approximation of unknown dynamics subtracted from the input.
+    \item \textbf{Tracking differentiator}: optional reference filter that provides smoothed derivatives for ADRC.
+\end{itemize}
+\end{vocabulary}

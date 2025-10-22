@@ -1,0 +1,297 @@
+\chapter{Estimation and Adaptive Control}
+\label{chap:estimation}
+
+\begin{learningobjective}
+\begin{itemize}[leftmargin=*]
+    \item Design observers and Kalman filters to reconstruct unmeasured states and reject sensor noise.
+    \item Analyze innovation statistics to tune stochastic estimators.
+    \item Explore model reference adaptive control (MRAC) through explicit update laws and simulation case studies.
+\end{itemize}
+\end{learningobjective}
+
+\section{Concept Map for Beginners}
+\begin{conceptroadmap}
+\begin{enumerate}[leftmargin=*]
+    \item Understand deterministic observers first—what they estimate, how fast they converge—and only then add noise to motivate Kalman filtering.
+    \item Use innovation statistics as a feedback loop for your estimator, just as controller outputs are checked against performance metrics.
+    \item Extend the estimation mindset to adaptive control: parameters become ``states'' we estimate online to keep performance robust.
+\end{enumerate}
+\end{conceptroadmap}
+
+\section{Concept--Math--Engineering Loop}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{0.28\linewidth}|>{\raggedright\arraybackslash}p{0.34\linewidth}|>{\raggedright\arraybackslash}X|}
+        \hline
+        \textbf{Concept} & \textbf{Mathematics} & \textbf{Engineering Practice} \\
+        \hline
+        Observer design & Pole placement of $A - L C$ & Use \texttt{place\_poles} and simulation hooks to confirm convergence with noisy measurements. \\
+        \hline
+        Kalman filtering & Riccati recursion, innovation covariance & Log $(t, r_k, S_k)$ from \texttt{EXPERIMENTS["kf\_lqr"]} to tune $Q$, $R$ empirically. \\
+        \hline
+        Adaptive control & Lyapunov analysis, MIT rule & Run \texttt{demo.py mrac} and tutorial plots to visualise parameter learning against design goals. \\
+        \hline
+    \end{tabularx}
+    \caption{Estimation and adaptation concepts tied to their mathematical tools and executable experiments.}
+\end{table}
+
+\section{Deterministic State Observers}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Luenberger observers that reconstruct full state vectors using known dynamics and measurements.
+    \item[\textbf{Why?}] Many systems lack direct state sensing; observers provide the feedback signals controllers require.
+    \item[\textbf{When?}] When sensors measure only a subset of states but the system is observable.
+    \item[\textbf{How?}] Select observer poles, compute gain $L$, and simulate error dynamics to verify convergence speed.
+    \item[\textbf{Example}] Place observer poles five times faster than closed-loop poles using \texttt{place\_poles} and inspect error decay in simulation.
+\end{beginnerguide}
+\subsection{Derivation}
+For partially measured systems, the discrete Luenberger observer
+\[
+    \hat{x}_{k+1} = A \hat{x}_k + B u_k + L (y_k - C \hat{x}_k)
+\]
+reconstructs the state. The error $e_k = x_k - \hat{x}_k$ evolves as $e_{k+1} = (A - L C) e_k$. Choose $L$ such that the eigenvalues of $A - L C$ lie well inside the unit circle (typically 2--5 times faster than the closed-loop poles).
+
+\subsection{Design Steps}
+\begin{enumerate}[leftmargin=*]
+    \item Specify desired observer poles $\Lambda_{\text{obs}}$.
+    \item Form the dual system $(A^\top, C^\top)$ and compute $L^\top$ via pole placement (e.g., \texttt{scipy.signal.place\_poles}).
+    \item Simulate the observer with noisy measurements to ensure convergence speed and noise rejection align with expectations.
+\end{enumerate}
+
+\subsection{Code Mapping}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{4cm}|X|X|}
+        \hline
+        \textbf{Python} & \textbf{Formula} & \textbf{Explanation} \\
+        \hline
+        \texttt{scipy.signal.place\_poles}\\\texttt{(A.T, C.T, poles).gain\_matrix.T} & $L$ & Generates the observer gain from desired poles. \\
+        \hline
+        \texttt{simulate\_discrete\_system} with observer-in-the-loop & $e_{k+1} = (A - L C) e_k$ & Validates convergence numerically. \\
+        \hline
+    \end{tabularx}
+    \caption{Luenberger observer implementation.}
+\end{table}
+
+\section{Kalman Filtering}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Probabilistic state estimation that minimises mean-square error under Gaussian noise assumptions.
+    \item[\textbf{Why?}] It weights model predictions and measurements optimally, delivering robust estimates and confidence bounds.
+    \item[\textbf{When?}] When process and measurement noise are significant or uncertainty quantification is needed.
+    \item[\textbf{How?}] Propagate $(\hat{x},P)$ through prediction/correction steps and tune $Q$, $R$ using innovation statistics.
+    \item[\textbf{Example}] Run \texttt{EXPERIMENTS["kf\_lqr"].runner(return\_logs=True)} to log innovations and adjust $Q$ until the normalised innovation squared averages near the measurement dimension.
+\end{beginnerguide}
+\subsection{Stochastic Model}
+Assume
+\begin{align}
+    x_{k+1} &= A x_k + B u_k + w_k, & w_k &\sim \mathcal{N}(0, Q), \\
+    y_k &= C x_k + v_k, & v_k &\sim \mathcal{N}(0, R),
+\end{align}
+with mutually independent noises. The Kalman recursion is
+\begin{align*}
+    \hat{x}_{k|k-1} &= A \hat{x}_{k-1|k-1} + B u_{k-1},\\
+    P_{k|k-1} &= A P_{k-1|k-1} A^\top + Q,\\
+    K_k &= P_{k|k-1} C^\top (C P_{k|k-1} C^\top + R)^{-1},\\
+    \hat{x}_{k|k} &= \hat{x}_{k|k-1} + K_k (y_k - C \hat{x}_{k|k-1}),\\
+    P_{k|k} &= (I - K_k C) P_{k|k-1}.
+\end{align*}
+The innovation $r_k = y_k - C \hat{x}_{k|k-1}$ has covariance $S_k = C P_{k|k-1} C^\top + R$ and serves as a diagnostic statistic.
+
+\subsection{Tuning Guidelines}
+\begin{itemize}[leftmargin=*]
+    \item Increase $Q$ to trust the model less and rely more on measurements (useful when unmodeled disturbances dominate).
+    \item Increase $R$ to trust the measurements less (useful when sensors are noisy).
+    \item Monitor the normalized innovation squared (NIS) statistic $\tilde{y}_k^T S_k^{-1} \tilde{y}_k$; its average should approach the measurement dimension.
+\end{itemize}
+
+\subsection{Code Mapping and Logging}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{4cm}|X|X|}
+        \hline
+        \textbf{Python} & \textbf{Formula} & \textbf{Explanation} \\
+        \hline
+        \texttt{predict()} & $\hat{x}_{k|k-1}$, $P_{k|k-1}$ & Method of the filter object; propagates the state and covariance. \\
+        \hline
+        \texttt{update()} & $K_k$, $r_k$, $P_{k|k}$ & Applies the correction step and returns the innovation together with the updated covariance. \\
+        \hline
+        \texttt{runner()} & $(t, r_k, S_k)$ & Invoke on \texttt{EXPERIMENTS["kf\_lqr"]} with \texttt{return\_logs=True} to capture the innovation statistics used to tune $Q$, $R$. \\
+        \hline
+    \end{tabularx}
+    \caption{Kalman filter code correspondence.}
+\end{table}
+
+\subsection{Case Study}
+Select $Q = \operatorname{diag}(10^{-4}, 5\times 10^{-5})$, $R = 4\times 10^{-4}$ for the mass--spring--damper with position measurements only. Running \texttt{python demo.py kf\_lqr --no-plot} yields steady-state gains and innovation statistics. Adjust $Q$ by an order of magnitude to see the trade-off between responsiveness and noise amplification; inspect the logged $S_k$ to verify tuning.
+
+\section{Model Reference Adaptive Control}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Adaptive laws that adjust controller parameters online so the plant follows a reference model.
+    \item[\textbf{Why?}] MRAC counters parameter drift and unmodelled dynamics without manual retuning.
+    \item[\textbf{When?}] After ensuring persistent excitation and when plant parameters are uncertain or changing.
+    \item[\textbf{How?}] Define the reference model, choose an adaptation law (e.g., MIT rule), and monitor Lyapunov-based error metrics.
+    \item[\textbf{Example}] Execute \texttt{python demo.py mrac} to observe $\theta_k$ convergence and tracking error shrinking toward the reference model output.
+\end{beginnerguide}
+\subsection{Derivation}
+MRAC enforces $y_k \rightarrow y_{m,k}$ where the reference model satisfies
+\begin{equation}
+    y_{m,k+1} = a_m y_{m,k} + b_m r_k.
+\end{equation}
+For the first-order plant $y_{k+1} = a y_k + b u_k$, use the control law
+\begin{equation}
+    u_k = \theta_1 y_k + \theta_2 r_k
+\end{equation}
+with parameter update via the MIT rule
+\begin{equation}
+    \theta_{k+1} = \theta_k - \gamma \phi_k e_k,
+\end{equation}
+where $\phi_k = [y_k\; r_k]^\top$ and $e_k = y_k - y_{m,k}$. Define $J_k = \tfrac{1}{2} e_k^2$; the gradient step
+\[
+    \theta_{k+1} = \theta_k - \gamma \frac{\partial J_k}{\partial \theta}
+                 = \theta_k - \gamma \left(\frac{\partial e_k}{\partial \theta}\right) e_k
+\]
+reduces to the MIT rule because $\partial e_k / \partial \theta = \phi_k$.
+
+\subsection{Stability Insight}
+Define a Lyapunov function candidate
+\begin{equation}
+    V = \frac{1}{2} e_k^2 + \frac{1}{2 \gamma} (\theta_k - \theta^*)^T (\theta_k - \theta^*),
+\end{equation}
+where $\theta^*$ denotes ideal parameters that achieve perfect tracking. Under standard MRAC assumptions (matching conditions, persistent excitation), the adaptation law ensures $V$ decreases, leading to bounded tracking error.
+
+\subsection{Code Mapping}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{4cm}|X|X|}
+        \hline
+        \textbf{Python} & \textbf{Formula} & \textbf{Explanation} \\
+        \hline
+        \texttt{MRACController.step()} & $u_k = \theta^\top \phi_k$ & Applies the adaptive control law. \\
+        \hline
+        \texttt{MRACController.theta} & $\theta_k$ & Stores parameter estimates; log to analyse convergence. \\
+        \hline
+    \end{tabularx}
+    \caption{MRAC algorithm in \texttt{scripts/controllers.py}.}
+\end{table}
+
+\subsection{Simulation Practice}
+Run \texttt{python demo.py mrac}. The experiment discretizes a first-order plant with $a=-0.4$, $b=1$, uses $a_m=0.97$, $b_m=0.03$, and $\gamma=0.2$. Record steady-state error, overshoot, and parameter evolution. Adjust $\gamma$ to explore convergence versus noise sensitivity; add parameter logging to visualise $\theta_k$ settling.
+
+\section{Tutorial: Adaptive Control Walkthrough}
+\begin{beginnerguide}
+    \item[\textbf{What?}] A scripted tour through adaptive tracking and parameter convergence figures.
+    \item[\textbf{Why?}] Visualising trajectories helps interpret adaptation speed and robustness to noise.
+    \item[\textbf{When?}] After learning the equations, as a sandbox for experimenting with adaptation gains.
+    \item[\textbf{How?}] Run \tutorialcmd[--output-dir figures]{adaptive} and inspect tracking and parameter plots while varying $\gamma$.
+    \item[\textbf{Example}] Increase $\gamma$ to 0.4, rerun the tutorial, and note faster convergence but amplified parameter oscillations.
+\end{beginnerguide}
+\begin{enumerate}[leftmargin=*]
+    \item Produce the adaptive-control figures with\\
+    \tutorialcmd[--output-dir figures]{adaptive}.
+    \item Inspect Figure~\ref{fig:adaptive-tracking} to see how the plant output matches the reference model; relate the transient to the Lyapunov design insights in \textcite{krstic1995nonlinear}.
+    \item Examine Figure~\ref{fig:adaptive-parameters} to monitor the evolution of $\theta_1$ and $\theta_2$. Adjust the adaptation gain $\gamma$ inside \texttt{tutorial\_adaptive} to visualise the trade-off between convergence speed and robustness.
+\end{enumerate}
+Appendix~\ref{chap:tooling} lists the supported \texttt{demo.py} experiments and plotting options you can reuse while exploring these scenarios.
+\IfFileExists{../figures/adaptive_tracking.png}{
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.75\linewidth]{../figures/adaptive_tracking.png}
+        \caption{MRAC tracking performance generated by \tutorialcmd{adaptive}.}
+        \label{fig:adaptive-tracking}
+    \end{figure}
+}{
+    \begin{figure}[h]
+        \centering
+        \fbox{\parbox{0.7\linewidth}{Run \tutorialcmd{adaptive} to create the MRAC tracking plot, then recompile.}}
+        \caption{Placeholder for the MRAC tracking plot.}
+        \label{fig:adaptive-tracking}
+    \end{figure}
+}
+\IfFileExists{../figures/adaptive_parameters.png}{
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.7\linewidth]{../figures/adaptive_parameters.png}
+        \caption{Parameter adaptation trajectories illustrating online learning.}
+        \label{fig:adaptive-parameters}
+    \end{figure}
+}{
+    \begin{figure}[h]
+        \centering
+        \fbox{\parbox{0.7\linewidth}{Generate the parameter trajectories with \tutorialcmd{adaptive}, then recompile.}}
+        \caption{Placeholder for the MRAC parameter plot.}
+        \label{fig:adaptive-parameters}
+    \end{figure}
+}
+
+\section{Handling Missing or Delayed Measurements}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Strategies for keeping estimators stable under packet drops, outliers, or sensor latency.
+    \item[\textbf{Why?}] Real-world systems rarely deliver perfect data; robustness to measurement issues is essential.
+    \item[\textbf{When?}] During estimator deployment, especially over networks or with low-cost sensors.
+    \item[\textbf{How?}] Propagate without updates during dropouts, inflate covariance, and gate outliers.
+    \item[\textbf{Example}] Modify \texttt{simulate\_discrete\_system} to drop every fifth measurement and observe how covariance inflation maintains state estimate accuracy.
+\end{beginnerguide}
+Modify \texttt{simulate\_discrete\_system} to include packet drops or sensor delays. Strategies to maintain estimator performance include:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Prediction during dropouts}: propagate the estimate using the process model when measurements are unavailable.
+    \item \textbf{Covariance inflation}: increase $P$ during prolonged dropouts to reflect growing uncertainty.
+    \item \textbf{Outlier rejection}: ignore innovations exceeding a specified threshold to handle bad data.
+\end{itemize}
+
+\section{Hands-On Practice}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Exercises that apply observers, Kalman filters, and adaptive controllers to scripted experiments.
+    \item[\textbf{Why?}] Practice reveals tuning nuances and builds confidence before tackling custom plants.
+    \item[\textbf{When?}] After studying the theory—use the tasks as immediate reinforcement.
+    \item[\textbf{How?}] Run the experiment harness, log results, adjust gains/noise levels, and compare against analytical expectations.
+    \item[\textbf{Example}] Toggle measurement dropouts while plotting innovations to see how covariance inflation affects the Kalman filter’s residual statistics.
+\end{beginnerguide}
+\begin{enumerate}[leftmargin=*]
+    \item Design a Luenberger observer using desired poles; verify $A - L C$ eigenvalues numerically.
+    \item Tune the Kalman filter by logging innovations:
+\begin{lstlisting}[language=python]
+result = EXPERIMENTS["kf_lqr"].runner(return_logs=True)
+innovation_log = result.metadata["innovation_log"]
+\end{lstlisting}
+    Adjust $Q$, $R$ until the residual statistics match the theoretical covariance.
+    \item Use the MRAC experiment to visualise parameter convergence for different $\gamma$ values; relate overshoot changes to the Lyapunov analysis.
+    \item Introduce measurement dropouts and confirm covariance inflation keeps the estimator responsive.
+\end{enumerate}
+
+\begin{takeaway}
+\begin{itemize}[leftmargin=*]
+    \item Observers and Kalman filters reconstruct hidden states and mitigate sensor noise; tune them using innovation statistics.
+    \item Adaptive control compensates for parameter drift but must be monitored to avoid instability.
+    \item Combined estimation and adaptation enable robust performance in the face of uncertainty and measurement imperfections.
+\end{itemize}
+\end{takeaway}
+
+\section{Module Review}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Observer essentials}: choose observer poles (or gains) at least twice the closed-loop bandwidth, use Lyapunov criteria to confirm convergence.
+    \item \textbf{Kalman tuning}: base $Q$, $R$ on physical insight and refine via innovation statistics.
+    \item \textbf{Adaptive laws}: MIT update $\theta_{k+1} = \theta_k - \gamma \phi_k e_k$ balances tracking accuracy and robustness; monitor parameter trajectories.
+    \item \textbf{Practice}: run \tutorialcmd{adaptive} to explore noise, dropout, and gain effects.
+    \item \textbf{Reading}: \textcite{krstic1995nonlinear} for rigorous adaptive proofs and \textcite{ljung2012control} for identification-integrated estimation.
+\end{itemize}
+
+\section{Keyword Review}
+\begin{vocabulary}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Luenberger observer}: deterministic estimator with error dynamics $A - L C$ tuned via pole placement.
+    \item \textbf{Innovation}: difference $r_k = y_k - C \hat{x}_{k|k-1}$ summarising new measurement information.
+    \item \textbf{Kalman gain}: optimal weighting $K_k = P_{k|k-1} C^\top (C P_{k|k-1} C^\top + R)^{-1}$ balancing model and measurements.
+    \item \textbf{Normalized innovation squared (NIS)}: statistic $r_k^\top S_k^{-1} r_k$ used to diagnose filter tuning.
+    \item \textbf{Model reference adaptive control (MRAC)}: scheme forcing plant output toward a reference model via online parameter updates.
+    \item \textbf{MIT rule}: gradient-descent update $\theta_{k+1} = \theta_k - \gamma \phi_k e_k$ minimizing tracking error.
+\end{itemize}
+\end{vocabulary}
+
+For motivated readers, \textcite{krstic1995nonlinear} expand these ideas to nonlinear plants, while \textcite{ljung2012control} show how estimation theory integrates with system identification workflows.

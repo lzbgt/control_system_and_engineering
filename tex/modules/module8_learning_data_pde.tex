@@ -1,0 +1,221 @@
+\chapter{Learning-Based Control and PDE Adaptive Systems}
+\label{chap:learning}
+
+\begin{learningobjective}
+\begin{itemize}[leftmargin=*]
+    \item Understand foundational ideas in system identification and data-driven modeling for beginners.
+    \item Explore parameter-estimation workflows inspired by \textcite{ljung2012control,astrom1995pid}.
+    \item Gain intuition for Lyapunov-based adaptive control of distributed-parameter (PDE) systems following \textcite{krstic1995nonlinear}.
+    \item Connect stability theory for nonlinear dynamics with practical scripts and figures.
+\end{itemize}
+\end{learningobjective}
+
+\section{Concept Map for Beginners}
+\begin{conceptroadmap}
+\begin{enumerate}[leftmargin=*]
+    \item Start from simple data models (e.g., ARX) so every regression weight has a clear physical meaning before tackling richer structures.
+    \item Use Lyapunov functions as a bridge between learned models and stability guarantees—understand what must stay bounded.
+    \item Extend your finite-dimensional intuition to PDEs by discretising space, analysing energy, and confirming results with tutorial plots.
+\end{enumerate}
+\end{conceptroadmap}
+
+\section{Concept--Math--Engineering Loop}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{0.28\linewidth}|>{\raggedright\arraybackslash}p{0.34\linewidth}|>{\raggedright\arraybackslash}X|}
+        \hline
+        \textbf{Concept} & \textbf{Mathematics} & \textbf{Engineering Practice} \\
+        \hline
+        Data-driven modelling & Recursive least squares, regression & Run \texttt{tutorial\_learning} to see parameters converge and evaluate residual variance. \\
+        \hline
+        Stability certification & Lyapunov functions, energy decay & Compute discrete energy $E_k$ in the tutorial to verify positive-definite matrices. \\
+        \hline
+        PDE adaptive control & Spatial discretisation, boundary control laws & Adjust adaptation gain $\gamma$ in the learning tutorial and inspect energy plots for stability. \\
+        \hline
+    \end{tabularx}
+    \caption{How Module~\ref{chap:learning} couples identification, stability theory, and numerical experiments.}
+\end{table}
+
+\section{Learning Models from Data}
+\begin{beginnerguide}
+    \item[\textbf{What?}] System identification techniques that estimate model parameters from input--output data.
+    \item[\textbf{Why?}] Accurate models enable better controllers when first-principles derivations are insufficient.
+    \item[\textbf{When?}] When plant parameters are unknown, drifting, or difficult to measure directly.
+    \item[\textbf{How?}] Set up regression structures (e.g., ARX, RLS), gather excitation data, and update parameters online.
+    \item[\textbf{Example}] Run the RLS tutorial to estimate coefficients of a first-order model and compare predicted vs. measured outputs.
+\end{beginnerguide}
+System identification turns measured input--output pairs into predictive models. \textcite{ljung2012control} presents a unified view spanning ARX, state-space, and nonlinear structures; for beginners we start with the scalar autoregressive model
+\begin{equation}
+    y_{k+1} = a y_k + b u_k + w_k,
+\end{equation}
+where $w_k$ captures disturbances. Collecting the regressor $\phi_k = [y_k\; u_k]^T$ allows the compact form $y_{k+1} = \phi_k^T \theta + w_k$, $\theta = [a\; b]^T$.
+
+\subsection{Recursive Least Squares (RLS)}
+RLS updates the parameter estimate after each sample:
+\begin{align}
+    K_k &= P_{k-1} \phi_k (\lambda + \phi_k^T P_{k-1} \phi_k)^{-1},\\
+    \theta_k &= \theta_{k-1} + K_k (y_{k+1} - \phi_k^T \theta_{k-1}),\\
+    P_k &= \lambda^{-1} (P_{k-1} - K_k \phi_k^T P_{k-1}),
+\end{align}
+with forgetting factor $\lambda \in (0, 1]$. RLS converges rapidly and is widely used in industrial autotuning, as discussed by \textcite{astrom1995pid}.
+
+\subsection{Code Mapping}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{4cm}|X|X|}
+        \hline
+        \textbf{Python} & \textbf{Formula} & \textbf{Explanation} \\
+        \hline
+        \texttt{rls\_update()} & $K_k$, $\theta_k$, $P_k$ & Part of the learning tutorial module; evaluates the RLS recursion each sample. \\
+        \hline
+        \texttt{numpy.var(residuals)} & $\operatorname{Var}(w_k)$ estimate & Quantifies disturbance variance for model verification. \\
+        \hline
+    \end{tabularx}
+    \caption{RLS equations aligned with code in \texttt{scripts/tutorials}.}
+\end{table}
+
+\subsection{Tutorial: Parameter Identification}
+\begin{enumerate}[leftmargin=*]
+    \item Run \tutorialcmd[--output-dir figures]{learning} to generate identification and PDE-control figures.
+    \item Inspect Figure~\ref{fig:rls} to see the RLS estimate converge toward the true coefficients while a small measurement noise perturbs the trajectory.
+    \item Modify the excitation signal or forgetting factor in \texttt{tutorial\_learning} to observe how richness of data affects convergence.
+\end{enumerate}
+\IfFileExists{../figures/learning_rls_parameters.png}{
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.75\linewidth]{../figures/learning_rls_parameters.png}
+        \caption{Recursive least squares parameter identification inspired by \textcite{ljung2012control}.}
+        \label{fig:rls}
+    \end{figure}
+}{
+    \begin{figure}[h]
+        \centering
+        \fbox{\parbox{0.7\linewidth}{Run \tutorialcmd{learning} to create the RLS parameter-estimation plot, then recompile.}}
+        \caption{Placeholder for the RLS parameter-estimation plot.}
+        \label{fig:rls}
+    \end{figure}
+}
+
+\section{Stability Theory Refresher}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Review of Lyapunov methods for both finite- and infinite-dimensional systems.
+    \item[\textbf{Why?}] Guarantees that learned or adaptive controllers maintain stability despite parameter updates.
+    \item[\textbf{When?}] After fitting data-driven models and prior to deploying adaptive laws.
+    \item[\textbf{How?}] Construct Lyapunov functions, evaluate their derivatives, and ensure they decrease along trajectories.
+    \item[\textbf{Example}] Use the energy functional $E(t)$ for the heat equation and show numerically that adaptive boundary control enforces $E_{k+1}-E_k < 0$.
+\end{beginnerguide}
+Nonlinear stability hinges on Lyapunov functions: if $V(x)$ is positive definite and $\dot{V}(x) \leq 0$, the origin is stable. \textcite{ljung2012control} emphasizes combining data-driven identification with stability certificates to validate learned models. In discrete time, choose $V(x_k) = x_k^T P x_k$, $P \succ 0$, and verify $V(x_{k+1}) - V(x_k) \leq 0$.
+
+\section{Adaptive Control of PDEs}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Techniques for stabilising distributed-parameter systems via adaptive boundary control.
+    \item[\textbf{Why?}] Many processes (thermal, fluid) obey PDEs; adaptive methods manage parameter uncertainty over space.
+    \item[\textbf{When?}] When lumped-parameter models are inadequate and spatial dynamics matter.
+    \item[\textbf{How?}] Discretise the PDE, design Lyapunov-based adaptation laws, and monitor energy decay.
+    \item[\textbf{Example}] Execute \texttt{tutorial\_learning} to generate \texttt{figures/learning\_pde\_energy.png} showing Lyapunov energy convergence.
+\end{beginnerguide}
+The adaptive boundary-control framework of \textcite{krstic1995nonlinear} shows that infinite-dimensional systems (e.g., the heat equation) can be stabilized via Lyapunov design. Consider the 1-D heat equation on $[0, 1]$ with boundary input $u(t)$ applied at $x=1$. A candidate Lyapunov functional is the energy $E(t) = \int_0^1 x(\xi, t)^2\,\mathrm{d}\xi$. Boundary control laws combined with adaptation can force $E(t)$ to decay despite uncertain plant parameters.
+
+Discretize the spatial domain into $N$ nodes using spacing $\Delta \xi = 1/(N-1)$. The semi-discrete dynamics become
+\[
+    \dot{\mathbf{x}} = \frac{\alpha}{\Delta \xi^2} L \mathbf{x} + B u + d,
+\]
+where $L$ is the tridiagonal Laplacian matrix, $B$ injects the boundary input, and $d$ lumps model mismatch. The discrete energy $E_k = \mathbf{x}_k^T W \mathbf{x}_k$ with weighting $W = \Delta \xi \, I$ satisfies
+\[
+    E_{k+1} - E_k = \mathbf{x}_k^T \left((A^T W + W A)\right) \mathbf{x}_k + 2 \Delta t \, \mathbf{x}_k^T W (B u_k + d_k),
+\]
+revealing how the control input shapes the energy decay. The tutorial script computes these matrices explicitly so beginners can print $A^T W + W A$ and confirm it is negative definite once the adaptive law converges.
+
+\subsection{Code Mapping}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{4cm}|X|X|}
+        \hline
+        \textbf{Python} & \textbf{Formula} & \textbf{Explanation} \\
+        \hline
+        \texttt{build\_pde\_matrices()} & $A$, $B$, $W$ & Helper in \texttt{tutorials.learning} that generates the discretized Laplacian and boundary-input matrices. \\
+        \hline
+        \texttt{compute\_energy()} & $E_k = x_k^\top W x_k$ & Returns the discrete energy so the tutorial can log Lyapunov decay. \\
+        \hline
+    \end{tabularx}
+    \caption{Mapping the PDE adaptive-control derivation to code.}
+\end{table}
+
+\subsection{Tutorial: Adaptive PDE Control}
+\begin{enumerate}[leftmargin=*]
+    \item Using the same \texttt{learning} tutorial command generates Figure~\ref{fig:pde-energy}. The script discretizes the heat equation, applies adaptive boundary control, and plots energy decay.
+    \item Experiment with the adaptation gain $\gamma$ in \texttt{tutorial\_learning} to observe how convergence speed and stability trade off; relate these observations to the Lyapunov arguments in \textcite{krstic1995nonlinear}.
+    \item Connect the concept back to finite-dimensional Lyapunov theory and observe how energy plots provide immediate stability diagnostics for beginners.
+\end{enumerate}
+\IfFileExists{../figures/learning_pde_energy.png}{
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.75\linewidth]{../figures/learning_pde_energy.png}
+        \caption{Energy decay for an adaptively controlled heat equation (based on concepts from \textcite{krstic1995nonlinear}).}
+        \label{fig:pde-energy}
+    \end{figure}
+}{
+    \begin{figure}[h]
+        \centering
+        \fbox{\parbox{0.7\linewidth}{Generate the PDE adaptive-control plot via the learning tutorial to visualise Lyapunov energy decay.}}
+        \caption{Placeholder for the PDE adaptive-control energy plot.}
+        \label{fig:pde-energy}
+    \end{figure}
+}
+
+\section{Putting It Together}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Integrates identification, stability analysis, and adaptive control into a cohesive workflow.
+    \item[\textbf{Why?}] Real projects iterate between learning and control; this section highlights the feedback loop between them.
+    \item[\textbf{When?}] When planning experiments that alternate between data collection and controller updates.
+    \item[\textbf{How?}] Follow the measure $\rightarrow$ learn $\rightarrow$ verify $\rightarrow$ control cycle, logging diagnostics at each step.
+    \item[\textbf{Example}] Identify parameters with RLS, design an LQR using those estimates, and validate energy decay with the adaptive PDE controller.
+\end{beginnerguide}
+\begin{itemize}[leftmargin=*]
+    \item Use identification to estimate low-order models before designing controllers, following the iterative approach of \textcite{astrom1995pid}.
+    \item Employ Lyapunov analysis (finite or infinite dimensional) to certify stability of both classical and data-driven controllers.
+    \item Embrace the workflow of measure $\rightarrow$ learn $\rightarrow$ verify $\rightarrow$ control, blending insights from \textcite{ljung2012control} and \textcite{krstic1995nonlinear} to guide further study.
+\end{itemize}
+
+\section{Practice Checklist}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Actionable tasks that reinforce data-driven and adaptive concepts.
+    \item[\textbf{Why?}] Practicing each step ensures you can move between identification, control design, and validation smoothly.
+    \item[\textbf{When?}] After reading the chapter and before applying techniques to new datasets.
+    \item[\textbf{How?}] Execute tutorial scripts, vary adaptation gains, and feed identified parameters into downstream controllers.
+    \item[\textbf{Example}] Run \tutorialcmd{learning} with different excitation signals and observe how parameter convergence speed changes.
+\end{beginnerguide}
+\begin{enumerate}[leftmargin=*]
+    \item Collect excitation data and run the RLS tutorial; compare estimated parameters with ground truth.
+    \item Use residual variance to judge whether the linear model captures disturbances adequately.
+    \item Generate PDE adaptive-control plots and vary the adaptation gain $\gamma$ to see how energy decay changes.
+    \item Feed identified parameters into modern-control chapters (e.g., LQR) to close the loop between learning and control synthesis.
+\end{enumerate}
+Appendix~\ref{chap:tooling} details the reusable commands for these tutorials so you can re-run them without digging through script docstrings.
+
+\section{Module Review}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Identification recap}: review the RLS recursion and monitor covariance $P_k$ to avoid numerical issues; ensure persistent excitation for convergence.
+    \item \textbf{PDE insight}: interpret the energy plot (Figure~\ref{fig:pde-energy}) as a Lyapunov witness and observe how adaptive boundary control shapes $E(t)$.
+    \item \textbf{Practice}: rerun \tutorialcmd{learning} and vary $\gamma$ or the disturbance profile to test robustness.
+    \item \textbf{Integration}: feed the identified parameters into LQR/ADRC designs to complete the learn-control loop emphasised in \textcite{ljung2012control}.
+    \item \textbf{Further reading}: \textcite{krstic1995nonlinear} for rigorous proofs and \textcite{ljung2012control} for advanced data-driven case studies.
+\end{itemize}
+
+\section{Keyword Review}
+\begin{vocabulary}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{System identification}: using measured inputs/outputs to estimate model parameters.
+    \item \textbf{Recursive least squares (RLS)}: online regression algorithm with covariance update $P_k$ and gain $K_k$.
+    \item \textbf{Forgetting factor $\lambda$}: weighting parameter that balances old versus new data in RLS.
+    \item \textbf{Lyapunov functional}: energy-like scalar (or integral) used to certify stability for PDEs and nonlinear systems.
+    \item \textbf{Adaptive gain $\gamma$}: tuning knob controlling speed/robustness of parameter updates in MRAC/PDE controllers.
+    \item \textbf{Energy decay}: decrease of $E_k = x_k^\top W x_k$ indicating stabilization in discretized PDE systems.
+\end{itemize}
+\end{vocabulary}

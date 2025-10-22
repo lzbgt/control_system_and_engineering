@@ -1,0 +1,335 @@
+\chapter{Time-Domain Analysis}
+\label{chap:time}
+
+\begin{learningobjective}
+\begin{itemize}[leftmargin=*]
+    \item Judge stability of linear systems using eigenvalue analysis, Lyapunov methods, and characteristic polynomials.
+    \item Relate transient specifications (rise time, settling time, overshoot) to system poles and damping ratios.
+    \item Follow complete numerical examples that compute performance metrics and validate them with Python simulations.
+\end{itemize}
+\end{learningobjective}
+
+\section{Concept Map for Beginners}
+\begin{conceptroadmap}
+\begin{enumerate}[leftmargin=*]
+    \item Begin with qualitative questions—does the system settle, oscillate, or diverge?—and tie them directly to eigenvalues and characteristic polynomials.
+    \item Translate performance requirements into pole locations using a small library of formulas for damping ratio and natural frequency.
+    \item Verify every analytical claim with the provided simulations, reinforcing algebra by observing the same effect in plots and logged metrics.
+\end{enumerate}
+\end{conceptroadmap}
+
+\section{Concept--Math--Engineering Loop}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{0.28\linewidth}|>{\raggedright\arraybackslash}p{0.34\linewidth}|>{\raggedright\arraybackslash}X|}
+        \hline
+        \textbf{Concept} & \textbf{Mathematics} & \textbf{Engineering Practice} \\
+        \hline
+        Stability assessment & Eigenvalues, Lyapunov equation, Routh--Hurwitz & Run eigenvalue checks and Lyapunov solves in Python to classify dynamics quickly. \\
+        \hline
+        Transient specifications & Second-order step response formulas, damping ratio $\zeta$ & Adjust $\zeta$ and $\omega_n$ in \texttt{tutorial\_time\_domain} to see predicted overshoot and settling time. \\
+        \hline
+        Controller interpretation & Root locus algebra, PID difference equations & Compare analytic root locus steps with the scripted plots and PID experiment logs. \\
+        \hline
+    \end{tabularx}
+    \caption{How Module~\ref{chap:time} balances theory, computation, and hands-on validation.}
+\end{table}
+
+\section{Stability by Eigenvalues and Lyapunov Functions}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Analytical tools for determining whether system trajectories decay, persist, or diverge.
+    \item[\textbf{Why?}] Stability is the first safety check—controllers are useless if the closed loop explodes.
+    \item[\textbf{When?}] Before tuning performance; confirm the open- or closed-loop poles sit in the stable region.
+    \item[\textbf{How?}] Inspect eigenvalues of $A$ or solve Lyapunov equations to obtain energy-like certificates.
+    \item[\textbf{Example}] Compute $P$ from $A^\top P + P A = -Q$ for a second-order system and verify numerically that $V(x)=x^\top P x$ decreases along trajectories.
+\end{beginnerguide}
+\subsection{Step-by-Step Derivation}
+The homogeneous system $\dot{x} = A x$ has solution $x(t) = \mathrm{e}^{A t} x(0)$. Eigenvalues of $A$ govern behaviour:
+\begin{itemize}[leftmargin=*]
+    \item $\Re(\lambda_i) < 0$ for all $i$ $\Rightarrow$ asymptotically stable.
+    \item Eigenvalues on the imaginary axis with no repetitions $\Rightarrow$ marginally stable.
+    \item Any $\Re(\lambda_i) > 0$ or repeated imaginary-axis pole $\Rightarrow$ unstable.
+\end{itemize}
+For a constructive certificate, choose $Q = Q^\top \succ 0$ and solve the Lyapunov equation
+\[
+    A^\top P + P A = -Q.
+\]
+If $P \succ 0$, the quadratic function $V(x) = x^\top P x$ decreases along trajectories, proving asymptotic stability.
+
+\subsection{Code Mapping}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{4cm}|X|X|}
+        \hline
+        \textbf{Python} & \textbf{Formula} & \textbf{Explanation} \\
+        \hline
+        \texttt{np.linalg.eigvals(A)} & $\lambda_i(A)$ & Computes eigenvalues used to categorise stability. \\
+        \hline
+        \texttt{scipy.linalg.solve\_continuous\_lyapunov(A.T, -Q)} & $A^\top P + P A = -Q$ & Returns $P$; check positive definiteness with \texttt{np.all(np.linalg.eigvals(P)>0)}. \\
+        \hline
+    \end{tabularx}
+    \caption{Eigenvalue and Lyapunov stability checks.}
+\end{table}
+
+\section{Characteristic Polynomials and Routh--Hurwitz}
+\begin{beginnerguide}
+    \item[\textbf{What?}] A tabular test for assessing polynomial stability without explicit root finding.
+    \item[\textbf{Why?}] High-order characteristic equations arise frequently; Routh--Hurwitz provides a fast manual or symbolic check.
+    \item[\textbf{When?}] When designing classical controllers that alter pole locations via parameter tuning.
+    \item[\textbf{How?}] Construct the Routh table coefficients and ensure the first column remains positive.
+    \item[\textbf{Example}] Apply the procedure to a cubic closed-loop polynomial and confirm the conditions using \texttt{sympy.routh\_array()}.
+\end{beginnerguide}
+\subsection{Derivation Workflow}
+For a unity-feedback loop with open-loop transfer $L(s)$, the closed-loop characteristic polynomial is $D(s) + N(s)$. Routh--Hurwitz builds a tabular test without root finding. Example for $s^3 + a_1 s^2 + a_2 s + a_3$:
+\[
+\begin{array}{c|cc}
+s^3 & 1 & a_2 \\
+s^2 & a_1 & a_3 \\
+s^1 & \dfrac{a_1 a_2 - a_3}{a_1} & 0 \\
+s^0 & a_3 & 
+\end{array}
+\]
+Every first-column entry must be positive. The template generalises to higher orders; replicate the calculation symbolically with SymPy to cement the algebra.
+
+\subsection{Code Mapping}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{4cm}|X|X|}
+        \hline
+        \textbf{Python} & \textbf{Formula} & \textbf{Explanation} \\
+        \hline
+        \texttt{sympy.routh\_array(poly)} & Routh table entries & Automates the eliminations; inspect intermediate determinants. \\
+        \hline
+        \texttt{numpy.poly(stable\_roots)} & $D(s)$ reconstruction & Useful for cross-checking with explicit pole placement. \\
+        \hline
+    \end{tabularx}
+    \caption{Routh--Hurwitz computations in Python.}
+\end{table}
+
+\section{Second-Order Response Metrics}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Closed-form relations between damping ratio, natural frequency, and time-domain specifications.
+    \item[\textbf{Why?}] These approximations convert qualitative requirements (overshoot, settling time) into numeric design targets.
+    \item[\textbf{When?}] Early in controller tuning to estimate suitable pole locations or PID gains.
+    \item[\textbf{How?}] Use the standard second-order step response equations and solve for $\zeta$ and $\omega_n$ that meet specs.
+    \item[\textbf{Example}] Given $M_p \le 10\%$ and $t_s \le 1.5$~s, solve for $\zeta \approx 0.59$, $\omega_n \ge 4.5$~rad/s, then simulate to validate.
+\end{beginnerguide}
+\subsection{Derivation}
+Starting from
+\[
+    G(s) = \frac{\omega_n^2}{s^2 + 2 \zeta \omega_n s + \omega_n^2},
+\]
+use inverse Laplace transforms to obtain
+\[
+    y(t) = 1 - \frac{1}{\sqrt{1 - \zeta^2}} e^{-\zeta \omega_n t} \sin(\omega_d t + \phi),
+\]
+with $\omega_d = \omega_n \sqrt{1 - \zeta^2}$. Differentiating this step response yields classic metrics:
+\begin{align*}
+    t_r &\approx \frac{1.8}{\omega_n} && 0.4 \leq \zeta \leq 0.8,\\
+    t_p &= \frac{\pi}{\omega_d},\\
+    M_p &= e^{-\pi \zeta / \sqrt{1 - \zeta^2}},\\
+    t_s &\approx \frac{4}{\zeta \omega_n} && \text{(2\% criterion)}.
+\end{align*}
+
+\subsection{Worked Specification Example}
+Design for $t_s \leq 1.5$~s and $M_p \leq 10\%$:
+\begin{enumerate}[leftmargin=*]
+    \item Solve $0.10 = e^{-\pi \zeta/\sqrt{1-\zeta^2}} \Rightarrow \zeta \approx 0.59$.
+    \item Impose $t_s \approx 4/(\zeta \omega_n) \leq 1.5$ to get $\omega_n \geq 4.5$~rad/s.
+    \item Target dominant poles at $-\zeta \omega_n \pm \mathrm{j} \omega_d$ with $\omega_d = \omega_n \sqrt{1-\zeta^2} \approx 3.7$~rad/s.
+\end{enumerate}
+
+\subsection{Code Mapping}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{4cm}|X|X|}
+        \hline
+        \textbf{Python} & \textbf{Formula} & \textbf{Explanation} \\
+        \hline
+        \texttt{control.step\_info(G)} & $t_r, t_p, M_p, t_s$ & Computes metrics from the transfer function. \\
+        \hline
+        \texttt{tutorial\_time\_domain} in \texttt{scripts/tutorials.py} & $y(t)$ vs. design targets & Visualises the effect of changing $\zeta$, $\omega_n$. \\
+        \hline
+    \end{tabularx}
+    \caption{Second-order performance checks.}
+\end{table}
+
+\section{Root-Locus Construction}
+\begin{beginnerguide}
+    \item[\textbf{What?}] A graphical method showing how closed-loop poles move as a scalar gain varies.
+    \item[\textbf{Why?}] It reveals stability margins and helps choose gains without exhaustive simulation.
+    \item[\textbf{When?}] During classical controller design, especially when adjusting proportional gain or placing lead/lag networks.
+    \item[\textbf{How?}] Plot the locus using pole/zero locations, angle criteria, and asymptote formulas.
+    \item[\textbf{Example}] Sketch the locus for $K/(s(s^2+0.4s+4))$, then confirm with \texttt{control.root\_locus()} to see the poles leave the real axis.
+\end{beginnerguide}
+\subsection{Manual Derivation}
+For $L(s) = K \frac{N(s)}{D(s)}$, root-locus points satisfy $1 + L(s) = 0$. The steepest steps mirror the derivation style in \texttt{kalman\_deduction.tex}:
+\begin{enumerate}[leftmargin=*]
+    \item Identify pole/zero structure of $L(s)$.
+    \item Apply angle criterion $\angle L(s) = (2k+1)\pi$ to determine locus on the real axis.
+    \item Compute asymptotes: $\sigma = (\sum \text{poles} - \sum \text{zeros})/(n - m)$, $\theta_k = \frac{(2k+1)\pi}{n-m}$.
+    \item Evaluate $\frac{dK}{ds} = 0$ to locate breakaway points.
+\end{enumerate}
+
+\subsection{Example}
+For $L(s) = K/(s(s^2 + 0.4 s + 4))$, differentiating $K(s) = -s(s^2 + 0.4s + 4)$ gives $3s^2 + 0.8 s + 4 = 0$, whose complex roots show that the locus leaves the real axis immediately.
+
+\subsection{Code Mapping}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{4cm}|X|X|}
+        \hline
+        \textbf{Python} & \textbf{Formula} & \textbf{Explanation} \\
+        \hline
+        \texttt{control.root\_locus(L)} & Locus plot & Visualises steps 1--4 graphically. \\
+        \hline
+        \texttt{tutorial\_time\_domain}\\\texttt{generate\_root\_locus()} & Annotated asymptotes & Recreates the analytical derivation numerically. \\
+        \hline
+    \end{tabularx}
+    \caption{Root-locus derivation and verification.}
+\end{table}
+
+\section{PID Controllers: Time-Domain Interpretation}
+\begin{beginnerguide}
+    \item[\textbf{What?}] The time-domain view of proportional-integral-derivative control and its discrete implementation.
+    \item[\textbf{Why?}] Understanding how each term shapes error evolution informs tuning and anti-windup strategies.
+    \item[\textbf{When?}] Whenever you deploy PID loops or need a baseline controller before moving to advanced methods.
+    \item[\textbf{How?}] Derive the difference equation, implement it with saturation guards, and tune gains using response metrics.
+    \item[\textbf{Example}] Use \texttt{PIDController.print\_incremental\_coefficients()} to inspect discrete coefficients and simulate the mass--spring--damper case to see their effect.
+\end{beginnerguide}
+\subsection{Incremental Implementation}
+The discrete incremental PID law is
+\[
+    u[k] = u[k-1] + K_p (e[k] - e[k-1]) + K_i T_s e[k] + \frac{K_d}{T_s} (e[k] - 2 e[k-1] + e[k-2]).
+\]
+Derivative filtering and anti-windup strategies (clamping, back-calculation) ensure robustness to quantization and saturation.
+
+\subsection{Simulation Case Study}
+\begin{lstlisting}[language=python]
+from scripts.experiments import EXPERIMENTS
+
+pid_result = EXPERIMENTS["pid"].runner()
+print(pid_result.performance_metrics())
+\end{lstlisting}
+Typical metrics include a steady-state error of $\approx 6\times 10^{-3}$ and overshoot near $75\%$ for the aggressive tuning. Compare these with second-order predictions to tune $K_p,K_i,K_d$ systematically.
+
+\subsection{Code Mapping}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{4cm}|X|X|}
+        \hline
+        \textbf{Python} & \textbf{Formula} & \textbf{Explanation} \\
+        \hline
+        \texttt{PIDController.step()} & Incremental PID law & Implements the difference equation and anti-windup hooks. \\
+        \hline
+        \texttt{tutorial\_time\_domain} & $y(t)$, $u(t)$ plots & Shows how gain changes alter $t_s$, $M_p$, and actuator effort. \\
+        \hline
+    \end{tabularx}
+    \caption{PID controller equations versus code.}
+\end{table}
+
+\section{Disturbance and Noise Rejection}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Analysis of how feedback loops attenuate load disturbances and amplify measurement noise.
+    \item[\textbf{Why?}] Controllers must balance robustness against disturbances with immunity to sensor imperfections.
+    \item[\textbf{When?}] After satisfying nominal performance, evaluate disturbance/noise behaviour before hardware deployment.
+    \item[\textbf{How?}] Examine sensitivity functions $S$ and complementary sensitivity $T$, augment simulations with injected disturbances.
+    \item[\textbf{Example}] Modify \texttt{tutorial\_time\_domain} to add a step disturbance at $t=2$~s and compare the resulting $y(t)$ across PID tunings.
+\end{beginnerguide}
+\subsection{Derivation}
+For unity feedback,
+\[
+    Y(s) = \frac{P(s)}{1 + P(s) C(s)} D(s) + \frac{P(s) C(s)}{1 + P(s) C(s)} R(s).
+\]
+Low-frequency disturbances are attenuated when $|PC| \gg 1$; sensor noise amplification grows with high-frequency loop gain, highlighting the need for derivative filtering.
+
+\subsection{Case Study}
+Modify \texttt{tutorial\_time\_domain} to inject a step disturbance at $t=2$~s and Gaussian sensor noise with variance $10^{-4}$. Compare the resulting plots under aggressive and conservative PID tunings to visualise the sensitivity functions $S = 1/(1+PC)$ and $T = PC/(1+PC)$.
+
+\section{Workflow Summary and Practice}
+\begin{beginnerguide}
+    \item[\textbf{What?}] A checklist for applying time-domain techniques end-to-end.
+    \item[\textbf{Why?}] Summaries help ensure you validate assumptions, tune gains responsibly, and document results reproducibly.
+    \item[\textbf{When?}] After completing the chapter and whenever you start a new design iteration.
+    \item[\textbf{How?}] Follow the enumerated steps: map specs to poles, verify stability, cross-check with simulation, and log results.
+    \item[\textbf{Example}] Run \tutorialcmd[--output-dir figures]{time}, annotate rise time/overshoot from the plots, and compare with second-order predictions.
+\end{beginnerguide}
+\begin{enumerate}[leftmargin=*]
+    \item Translate specifications into pole targets using the second-order formulas and root-locus insights.
+    \item Verify algebraic stability tests (Lyapunov, Routh--Hurwitz) with Python to avoid arithmetic mistakes.
+    \item Validate against simulations using \tutorialcmd[--output-dir figures]{time}; inspect \texttt{figures/time\_pid\_responses.png} and \texttt{figures/time\_pid\_controls.png}.
+    \item Log innovations or residuals in experiments to tune disturbance/noise models before moving to frequency-domain design.
+\end{enumerate}
+Refer back to Appendix~\ref{chap:tooling} for the reproducible plotting commands and \texttt{make} targets that automate these checks.
+\IfFileExists{../figures/time_pid_responses.png}{
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.75\linewidth]{../figures/time_pid_responses.png}
+        \caption{PID step responses for multiple tunings generated via \tutorialcmd{time}.}
+        \label{fig:pid-responses}
+    \end{figure}
+}{
+    \begin{figure}[h]
+        \centering
+        \fbox{\parbox{0.7\linewidth}{Run \tutorialcmd{time} to create the multi-case PID response plot, then recompile.}}
+        \caption{Placeholder for the multi-case PID step-response plot.}
+        \label{fig:pid-responses}
+    \end{figure}
+}
+\IfFileExists{../figures/time_pid_controls.png}{
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.75\linewidth]{../figures/time_pid_controls.png}
+        \caption{Control effort comparison across PID tunings.}
+        \label{fig:pid-controls}
+    \end{figure}
+}{
+    \begin{figure}[h]
+        \centering
+        \fbox{\parbox{0.7\linewidth}{Generate the control-effort plot with \tutorialcmd{time} to visualise actuator demand.}}
+        \caption{Placeholder for the PID control-effort plot.}
+        \label{fig:pid-controls}
+    \end{figure}
+}
+
+\begin{takeaway}
+\begin{itemize}[leftmargin=*]
+    \item Stability analysis combines algebraic tests (Routh--Hurwitz) with geometric intuition (root locus, eigenvalues).
+    \item Performance formulas for second-order systems provide quick design rules which must be cross-checked against simulations.
+    \item Python-backed experiments translate equations into numerical intuition, highlighting effects of nonidealities.
+\end{itemize}
+\end{takeaway}
+
+\section{Module Review}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Stability}: eigenvalue locations, Lyapunov equation $A^\top P + P A = -Q$.
+    \item \textbf{Routh--Hurwitz}: all first-column entries positive $\Leftrightarrow$ closed-loop stability.
+    \item \textbf{Second-order metrics}: $t_s \approx 4/(\zeta \omega_n)$, $M_p = e^{-\pi \zeta / \sqrt{1-\zeta^2}}$.
+    \item \textbf{Root locus}: asymptote centroid $\sigma$ and angles $\theta_k$ describe pole migration.
+    \item \textbf{PID implementation}: incremental difference equation with anti-windup safeguards.
+    \item \textbf{Disturbance rejection}: $S = 1/(1 + PC)$, $T = PC/(1 + PC)$ quantify load disturbance versus noise amplification.
+\end{itemize}
+
+\section{Keyword Review}
+\begin{vocabulary}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Asymptotic stability}: all eigenvalues with negative real parts (continuous time) or magnitude less than one (discrete time).
+    \item \textbf{Lyapunov function}: energy-like scalar used to certify stability; decreases along trajectories.
+    \item \textbf{Characteristic polynomial}: determinant $\det(sI - A)$ (or closed-loop denominator) whose roots are system poles.
+    \item \textbf{Damping ratio $\zeta$}: dimensionless measure controlling overshoot and oscillation in second-order systems.
+    \item \textbf{Root locus}: plot showing closed-loop pole trajectories as a gain varies.
+    \item \textbf{Sensitivity $S$}: transfer function mapping disturbances to output, highlighting robustness limits.
+\end{itemize}
+\end{vocabulary}

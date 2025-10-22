@@ -1,0 +1,303 @@
+\chapter{Frequency-Domain Foundations}
+\label{chap:frequency}
+
+\begin{learningobjective}
+\begin{itemize}[leftmargin=*]
+    \item Interpret the sinusoidal steady-state response of linear time-invariant (LTI) systems and connect it to Bode, Nyquist, and Nichols plots.
+    \item Compute gain/phase margins, crossover frequencies, and sensitivity functions from analytic expressions and sampled data.
+    \item Carry out complete worked examples that start from a transfer function, construct frequency plots, and verify results numerically using Python.
+\end{itemize}
+\end{learningobjective}
+
+\section{Concept Map for Beginners}
+\begin{conceptroadmap}
+\begin{enumerate}[leftmargin=*]
+    \item View frequency response as a question about how the system reacts to sine waves—once that story is clear, complex algebra becomes less intimidating.
+    \item Build Bode and Nyquist plots step-by-step, always relating slope changes or encirclements to the underlying poles and zeros.
+    \item Use the tutorial scripts to overlay analytic sketches with high-resolution plots so you can see how each formula shapes a tangible curve.
+\end{enumerate}
+\end{conceptroadmap}
+
+\section{Concept--Math--Engineering Loop}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{0.28\linewidth}|>{\raggedright\arraybackslash}p{0.34\linewidth}|>{\raggedright\arraybackslash}X|}
+        \hline
+        \textbf{Concept} & \textbf{Mathematics} & \textbf{Engineering Practice} \\
+        \hline
+        Sinusoidal steady state & Evaluate $G(\mathrm{j}\omega)$ and interpret magnitude/phase & Execute \texttt{system.frequency\_response} to compare analytic and numerical values. \\
+        \hline
+        Loop-shaping plots & Bode asymptotes, Nyquist encirclement rules & Generate tutorial figures to overlay manual sketches with exact curves. \\
+        \hline
+        Robustness metrics & Gain/phase margins, sensitivity functions & Use \texttt{control.margin} and sensitivity utilities to tie algebra to margin specifications. \\
+        \hline
+    \end{tabularx}
+    \caption{Frequency-domain learning workflow balancing concepts, formulas, and tooling.}
+\end{table}
+
+\section{Sinusoidal Steady-State Response}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Describes how linear systems respond to sinusoidal inputs by evaluating $G(\mathrm{j}\omega)$.
+    \item[\textbf{Why?}] Frequency response directly connects to Bode and Nyquist plots used for robustness analysis.
+    \item[\textbf{When?}] Before constructing frequency-domain plots or computing gain/phase margins.
+    \item[\textbf{How?}] Substitute $s=\mathrm{j}\omega$, compute magnitude and phase, and compare with simulation.
+    \item[\textbf{Example}] Evaluate $|G(\mathrm{j}\omega)|$ for the mass--spring--damper plant using \texttt{system.frequency\_response(omega)} and overlay analytic formulas.
+\end{beginnerguide}
+\subsection{Derivation}
+Excite an LTI system with $u(t) = U \sin(\omega t)$. The steady-state output is
+\[
+    y(t) = |G(\mathrm{j}\omega)| U \sin\left(\omega t + \angle G(\mathrm{j}\omega)\right),
+\]
+where $G(s) = C (sI - A)^{-1} B + D$ is the transfer function. Substituting $s = \mathrm{j}\omega$ and simplifying the complex arithmetic yields magnitude and phase expressions, exactly as demonstrated in the mass–spring–damper case study below.
+
+\subsection{Code Mapping}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{4cm}|X|X|}
+        \hline
+        \textbf{Python} & \textbf{Formula} & \textbf{Explanation} \\
+        \hline
+        \texttt{system.frequency\_response}\\\texttt{(omega)} & $G(\mathrm{j}\omega)$ & Uses linear algebra to evaluate $(\mathrm{j}\omega I - A)^{-1}$. \\
+        \hline
+        \texttt{np.abs(G), np.angle(G)} & $|G(\mathrm{j}\omega)|$, $\angle G(\mathrm{j}\omega)$ & Direct comparison with analytic expressions. \\
+        \hline
+    \end{tabularx}
+    \caption{Complex-frequency evaluation pipeline.}
+\end{table}
+
+\section{Bode Plot Construction}
+\begin{beginnerguide}
+    \item[\textbf{What?}] A graphical summary of magnitude and phase versus frequency.
+    \item[\textbf{Why?}] Bode plots reveal bandwidth, resonances, and the impact of controller poles/zeros at a glance.
+    \item[\textbf{When?}] During loop-shaping to ensure sufficient gain/phase margins and noise attenuation.
+    \item[\textbf{How?}] Factor $G(s)$, sketch asymptotes, and verify with computational tools.
+    \item[\textbf{Example}] Plot the mass--spring--damper response via \tutorialcmd{frequency} and annotate break frequencies predicted analytically.
+\end{beginnerguide}
+\subsection{Analytic Template}
+Factor the transfer function
+\[
+    G(s) = K s^{n_z} \prod_{i=1}^{N_z} \left(1 + \frac{s}{z_i}\right) \prod_{i=1}^{N_p} \left(1 + \frac{s}{p_i}\right)^{-1}
+\]
+and sketch the magnitude by superimposing straight-line asymptotes: each pole contributes $-20$~dB/decade beyond its break frequency; zeros add $+20$~dB/decade. The phase is the sum of arctangent contributions.
+
+\subsection{Worked Example: Mass--Spring--Damper}
+For $m=1$, $c=0.4$, $k=4$,
+\begin{align*}
+    |G(\mathrm{j}\omega)| &= \frac{1}{\sqrt{(4 - \omega^2)^2 + (0.4 \omega)^2}},\\
+    \angle G(\mathrm{j}\omega) &= -\tan^{-1}\!\left(\frac{0.4 \omega}{4 - \omega^2}\right).
+\end{align*}
+Verify the algebra using the short script in the original notes and confirm numerically with the helper below.
+
+\subsection{Python Reproduction}
+\begin{lstlisting}[language=python]
+import numpy as np
+import matplotlib.pyplot as plt
+from scripts.dynamics import mass_spring_damper
+
+system = mass_spring_damper(m=1.0, c=0.4, k=4.0)
+omega = np.logspace(-1, 2, 600)
+Gjw = system.frequency_response(omega)
+
+plt.figure()
+plt.semilogx(omega, 20*np.log10(np.abs(Gjw)))
+plt.xlabel("Frequency [rad/s]"); plt.ylabel("Magnitude [dB]")
+plt.grid(True, which="both")
+
+plt.figure()
+plt.semilogx(omega, np.degrees(np.angle(Gjw)))
+plt.xlabel("Frequency [rad/s]"); plt.ylabel("Phase [deg]")
+plt.grid(True, which="both")
+plt.show()
+\end{lstlisting}
+
+\section{Nyquist Criterion and Stability Margins}
+\begin{beginnerguide}
+    \item[\textbf{What?}] A contour-based test that links open-loop frequency response to closed-loop stability.
+    \item[\textbf{Why?}] It provides gain and phase margins critical for robust controller tuning.
+    \item[\textbf{When?}] After choosing a controller candidate but before finalising gains.
+    \item[\textbf{How?}] Plot $L(\mathrm{j}\omega)$, count encirclements of $-1$, and read margins from intersections.
+    \item[\textbf{Example}] Use \texttt{control.nyquist(L)} on the PID-regulated mass--spring--damper to visualise margin improvements.
+\end{beginnerguide}
+\subsection{Derivation}
+The Nyquist contour maps the right-half plane through $L(s) = C(s) P(s)$. Encirclements of $-1$ encode closed-loop stability via $N = Z - P$. Gain and phase margins follow from the intersections of $L(\mathrm{j}\omega)$ with the unit circle and negative real axis:
+\begin{align*}
+    \text{GM} &= \frac{1}{|L(\mathrm{j}\omega_\pi)|}, \quad \angle L(\mathrm{j}\omega_\pi) = -\pi,\\
+    \text{PM} &= \pi + \angle L(\mathrm{j}\omega_c), \quad |L(\mathrm{j}\omega_c)| = 1.
+\end{align*}
+
+\subsection{Case Study: PID-Regulated MSD}
+With $K_p = 40$, $K_i = 80$, $K_d = 2$,
+\begin{align*}
+    L(s) = \frac{K_d s^2 + K_p s + K_i}{s (s^2 + 0.4 s + 4)}.
+\end{align*}
+Evaluate $L(\mathrm{j}\omega)$ at sample frequencies to observe how the locus approaches $-1$. The Nyquist plot generated by:
+\begin{lstlisting}[language=python]
+from scripts.tutorials import frequency
+frequency.generate_nyquist_overlay(output_dir="figures")
+\end{lstlisting}
+overlays plant and compensated loops, emphasising margin improvements.
+
+\subsection{Code Mapping}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{4cm}|X|X|}
+        \hline
+        \textbf{Python} & \textbf{Formula} & \textbf{Explanation} \\
+        \hline
+        \texttt{control.nyquist(L)} & $L(\mathrm{j}\omega)$ trajectory & Visualises encirclements and margins. \\
+        \hline
+        \texttt{control.margin(L)} & GM, PM & Numerically extracts $\omega_c$, $\omega_\pi$, and margins. \\
+        \hline
+    \end{tabularx}
+    \caption{Nyquist analysis tooling.}
+\end{table}
+
+\section{Sensitivity, Nichols, and Loop-Shaping}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Tools for quantifying disturbance rejection ($S$) and noise amplification ($T$) along with Nichols charts.
+    \item[\textbf{Why?}] Sensitivity functions clarify robustness trade-offs beyond simple margin numbers.
+    \item[\textbf{When?}] After verifying stability and margins to fine-tune robustness and performance.
+    \item[\textbf{How?}] Compute $S$ and $T$ across frequency, inspect Nichols overlays, and adjust controller shape accordingly.
+    \item[\textbf{Example}] Call \texttt{frequency.compute\_sensitivity(L)} to plot $|S|$ and $|T|$, confirming low-frequency disturbance rejection for the tuned PID.
+\end{beginnerguide}
+\subsection{Key Relations}
+\[
+    S(j\omega) = \frac{1}{1 + L(j\omega)}, \qquad T(j\omega) = \frac{L(j\omega)}{1 + L(j\omega)}.
+\]
+Nichols charts plot loop gain (dB) versus phase and overlay contours of constant $|S|$ and $|T|$ to visualise robustness trade-offs.
+
+\subsection{Numerical Example}
+For the PID design above:
+\[
+    |S(\mathrm{j}0.1)| \approx 0.05,\quad |S(\mathrm{j}1)| \approx 0.22,\quad |S(\mathrm{j}10)| \approx 0.99,
+\]
+highlighting excellent low-frequency disturbance rejection and modest high-frequency noise amplification.
+
+\subsection{Code Mapping}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{4cm}|X|X|}
+        \hline
+        \textbf{Python} & \textbf{Formula} & \textbf{Explanation} \\
+        \hline
+        \texttt{frequency.compute\_sensitivity}\\\texttt{(L)} & $S(j\omega)$, $T(j\omega)$ & Utility in \texttt{scripts/tutorials} evaluates sensitivity functions. \\
+        \hline
+        \texttt{control.nichols(L)} & Nichols chart & Displays contours for loop-shaping decisions. \\
+        \hline
+    \end{tabularx}
+    \caption{Sensitivity analysis utilities.}
+\end{table}
+
+\section{Practice Workflow}
+\begin{beginnerguide}
+    \item[\textbf{What?}] A repeatable sequence for applying frequency-domain analysis.
+    \item[\textbf{Why?}] Structured steps reduce mistakes when moving from algebra to plots and back.
+    \item[\textbf{When?}] Whenever you iterate on loop-shaping or document design decisions.
+    \item[\textbf{How?}] Derive analytic expressions, generate plots with tutorial scripts, measure margins, and record sensitivity insights.
+    \item[\textbf{Example}] Generate \texttt{figures/frequency\_nyquist\_overlay.png} and highlight the distance to $-1$ at crossover to support your gain choice.
+\end{beginnerguide}
+\begin{enumerate}[leftmargin=*]
+    \item Derive $|G(\mathrm{j}\omega)|$ and $\angle G(\mathrm{j}\omega)$ analytically, then verify with \texttt{system.frequency\_response}.
+    \item Construct Bode plots and annotate break frequencies; compare with control-library results.
+    \item Produce Nyquist and Nichols diagrams via \tutorialcmd[--output-dir figures]{frequency}; inspect \texttt{figures/frequency\_bode\_overlay.png}, \texttt{frequency\_nyquist\_overlay.png}, and \texttt{frequency\_root\_locus.png}.
+    \item Extract gain and phase margins, ensuring GM $\geq 6$~dB and PM $\geq 45^{\circ}$ for baseline robustness.
+    \item Evaluate $S$ and $T$ to balance disturbance rejection against noise amplification before finalising controller parameters.
+\end{enumerate}
+Appendix~\ref{chap:tooling} documents the exact figure-generation workflow so you can regenerate the overlays without hunting for command syntax.
+\IfFileExists{../figures/frequency_bode_overlay.png}{
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.75\linewidth]{../figures/frequency_bode_overlay.png}
+        \caption{Bode magnitude comparison generated by \tutorialcmd{frequency}.}
+        \label{fig:bode-overlay}
+    \end{figure}
+}{
+    \begin{figure}[h]
+        \centering
+        \fbox{\parbox{0.7\linewidth}{Run \tutorialcmd{frequency} to create the Bode overlays, then recompile to embed them.}}
+        \caption{Placeholder for the Bode magnitude plot.}
+        \label{fig:bode-overlay}
+    \end{figure}
+}
+\IfFileExists{../figures/frequency_phase_overlay.png}{
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.75\linewidth]{../figures/frequency_phase_overlay.png}
+        \caption{Bode phase overlay generated by the tutorial script.}
+        \label{fig:phase-overlay}
+    \end{figure}
+}{
+    \begin{figure}[h]
+        \centering
+        \fbox{\parbox{0.7\linewidth}{Generate the phase overlay via \tutorialcmd{frequency} to view the phase response.}}
+        \caption{Placeholder for the Bode phase plot.}
+        \label{fig:phase-overlay}
+    \end{figure}
+}
+\IfFileExists{../figures/frequency_nyquist_overlay.png}{
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.6\linewidth]{../figures/frequency_nyquist_overlay.png}
+        \caption{Nyquist overlays illustrating loop-shape changes across controllers.}
+        \label{fig:nyquist-overlay}
+    \end{figure}
+}{
+    \begin{figure}[h]
+        \centering
+        \fbox{\parbox{0.6\linewidth}{Generate the Nyquist overlay via \tutorialcmd{frequency} to visualise loop stability.}}
+        \caption{Placeholder for the Nyquist plot.}
+        \label{fig:nyquist-overlay}
+    \end{figure}
+}
+\IfFileExists{../figures/frequency_root_locus.png}{
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.6\linewidth]{../figures/frequency_root_locus.png}
+        \caption{Root locus of $K/(s(s+4))$ illustrating pole migration as $K$ varies.}
+        \label{fig:root-locus}
+    \end{figure}
+}{
+    \begin{figure}[h]
+        \centering
+        \fbox{\parbox{0.6\linewidth}{Generate the root-locus plot via the frequency tutorial to accompany the discussion.}}
+        \caption{Placeholder for the root-locus plot.}
+        \label{fig:root-locus}
+    \end{figure}
+}
+
+\begin{takeaway}
+\begin{itemize}[leftmargin=*]
+    \item Frequency-domain analysis provides complementary intuition to time-domain metrics, especially for robustness and disturbance rejection.
+    \item Worked examples demonstrate how to transition from formulas to concrete plots and numerical values; repeat the workflow on your own systems.
+    \item Use Python scripts to automate frequency sweeps, ensuring consistency between analytical derivations and visual intuition.
+\end{itemize}
+\end{takeaway}
+
+\section{Module Review}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Core relations}: $G(\mathrm{j}\omega) = C (\mathrm{j}\omega I - A)^{-1} B + D$, gain margin and phase margin from Nyquist, sensitivity functions $S = 1/(1+L)$, $T = L/(1+L)$.
+    \item \textbf{Design lens}: correlate Bode slope changes with pole/zero placements, ensure Nyquist trajectory maintains recommended margins (45--60$^{\circ}$ phase per \textcite{astrom2006advanced}).
+    \item \textbf{Validation checklist}: compare analytic sketches with tutorial overlays, cross-reference time-domain metrics with frequency margins, and inspect root-locus movement under gain variation.
+    \item \textbf{Practice}: run \tutorialcmd{frequency} and annotate key crossover frequencies and distances to $-1$ on the Nyquist plot.
+    \item \textbf{Further reading}: \textcite{astrom2006advanced} Ch.~4--5 and \textcite{ljung2012control} Ch.~7 for loop-shaping methodology.
+\end{itemize}
+
+\section{Keyword Review}
+\begin{vocabulary}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Bode plot}: log-frequency magnitude and phase visualization built from superposed pole/zero contributions.
+    \item \textbf{Gain margin (GM)}: factor by which loop gain can increase before instability ($\mathrm{GM} = 1/|L(\mathrm{j}\omega_\pi)|$).
+    \item \textbf{Phase margin (PM)}: additional phase lag allowed at gain crossover ($\mathrm{PM} = \pi + \angle L(\mathrm{j}\omega_c)$).
+    \item \textbf{Nyquist criterion}: encirclement rule linking open-loop frequency response to closed-loop pole counts.
+    \item \textbf{Nichols chart}: gain-versus-phase plot with sensitivity contours for loop shaping.
+    \item \textbf{Sensitivity $S$}: magnitude indicates disturbance rejection; $|S|<1$ implies attenuation at that frequency.
+\end{itemize}
+\end{vocabulary}

@@ -1,0 +1,34 @@
+\chapter{Tooling and Workflow}
+\label{chap:tooling}
+
+\section{Repository Layout}
+\begin{itemize}[leftmargin=*]
+    \item \texttt{tex/}: LaTeX sources organized by module; compile with Xe\LaTeX{} via the \texttt{Makefile}.
+    \item \texttt{scripts/}: reusable Python modules (dynamics, controllers, simulation, visualization, experiments).
+    \item \texttt{notebooks/}: optional Jupyter notebooks for symbolic or exploratory analysis.
+    \item \texttt{build/}: generated artifacts such as \texttt{course.pdf} and saved figures.
+\end{itemize}
+
+\section{Compiling the Notes}
+\begin{enumerate}[leftmargin=*]
+    \item Confirm Xe\LaTeX{} is available. Under WSL, invoke the Windows installation with
+\begin{lstlisting}[language=bash]
+make XELATEX=xelatex.exe BIBER=biber.exe
+\end{lstlisting}
+    \item Run \texttt{make}; the workflow enters \texttt{tex/} before compiling so local inputs are resolved.
+    \item Use \texttt{make clean} to clear auxiliary files when necessary.
+\end{enumerate}
+
+\section{Python Environment}
+\begin{enumerate}[leftmargin=*]
+    \item Activate \texttt{.venv} and install dependencies listed in \texttt{requirements.txt}.
+    \item Execute experiments: \texttt{python demo.py <experiment> [--no-plot --output path]}.
+    \item For repeatable plots, save figures to \texttt{figures/} and include them in the LaTeX sources via \texttt{\string\includegraphics}.
+\end{enumerate}
+
+\section{Automation Hooks}
+\begin{itemize}[leftmargin=*]
+    \item Extend the \texttt{Makefile} with targets such as \texttt{make figures} that call Python scripts and copy generated PNG files into \texttt{build/figures}.
+    \item Integrate static analysis tools (e.g., \texttt{ruff}, \texttt{black}) as the code base grows; add targets to run unit tests once created.
+    \item Record new workflow steps in \texttt{agents.md} to keep all collaborators aligned.
+\end{itemize}

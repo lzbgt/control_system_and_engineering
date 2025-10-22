@@ -1,0 +1,257 @@
+\chapter{Digital Implementation and Practical Considerations}
+\label{chap:digital}
+
+\begin{learningobjective}
+\begin{itemize}[leftmargin=*]
+    \item Understand how sampling, quantization, and computational delays affect closed-loop performance.
+    \item Translate continuous-time controllers into numerically stable discrete implementations.
+    \item Plan validation workflows from simulation to hardware-in-the-loop testing.
+\end{itemize}
+\end{learningobjective}
+
+\section{Concept Map for Beginners}
+\begin{conceptroadmap}
+\begin{enumerate}[leftmargin=*]
+    \item Look at sampling as the act of taking snapshots; relate Nyquist and aliasing to everyday examples like misinterpreted wagon wheels.
+    \item Translate controllers carefully so that the discrete implementation preserves the intent of the continuous design.
+    \item Build confidence stepwise—simulate, run on the processor, then integrate hardware—so each stage validates assumptions about timing and quantization.
+\end{enumerate}
+\end{conceptroadmap}
+
+\section{Concept--Math--Engineering Loop}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{0.28\linewidth}|>{\raggedright\arraybackslash}p{0.34\linewidth}|>{\raggedright\arraybackslash}X|}
+        \hline
+        \textbf{Concept} & \textbf{Mathematics} & \textbf{Engineering Practice} \\
+        \hline
+        Sampling effects & Nyquist limit, discrete pole mapping $z = e^{\lambda T_s}$ & Reproduce aliasing plots with \tutorialcmd{digital}. \\
+        \hline
+        Discretization fidelity & Euler and Tustin substitutions & Compare discrete PID implementations by switching methods in the tutorial. \\
+        \hline
+        Nonidealities & Quantization models, delay-induced phase lag & Use simulator options for quantization/jitter and inspect generated figures for margin loss. \\
+        \hline
+    \end{tabularx}
+    \caption{Connecting digital-control concepts to the math and experimentation workflow.}
+\end{table}
+
+\section{Sampling Theory Refresher}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Reviews how sampling, aliasing, and pole mapping affect discrete-time representations.
+    \item[\textbf{Why?}] Sampling choices directly impact closed-loop stability and fidelity when migrating to digital controllers.
+    \item[\textbf{When?}] Before discretising controllers or choosing hardware update rates.
+    \item[\textbf{How?}] Apply Nyquist limits, map continuous poles via $z=e^{\lambda T_s}$, and simulate aliasing scenarios.
+    \item[\textbf{Example}] Use the tutorial to sample a 20~Hz plant at 25~Hz and observe the resulting 5~Hz alias in the output spectrum.
+\end{beginnerguide}
+Sampling a continuous signal $x(t)$ at period $T_s$ yields $x[k] = x(k T_s)$. Key implications:
+\begin{itemize}[leftmargin=*]
+    \item Nyquist criterion requires sampling frequency $\omega_s = 2 \pi / T_s$ to exceed twice the highest significant frequency component ($\omega_s > 2 \omega_{\max}$).
+    \item Continuous-time poles $\lambda_i$ map to discrete poles $z_i = \mathrm{e}^{\lambda_i T_s}$. Poles with large negative real parts may cluster near the origin if $T_s$ is large, distorting dynamics.
+    \item Input/output delays $\tau$ translate to factors of $z^{-d}$ with $d = \lfloor \tau / T_s \rceil$, reducing phase margin.
+\end{itemize}
+\subsection{Worked Example: Aliasing and Timing Jitter}
+Consider a plant whose dominant mode oscillates at $20$~Hz ($\omega_{\max} = 40 \pi$~rad/s). Sampling at $T_s = 0.04$~s (25~Hz) violates Nyquist because $\omega_s = 50 \pi < 2 \omega_{\max}$. The aliased frequency observed by the controller is
+\[
+    f_\text{alias} = |f_\text{signal} - N f_s| = |20 - 1 \cdot 25| = 5~\text{Hz},
+\]
+causing the loop to chase a much slower oscillation and mis-tune gains. Edit \texttt{tutorial\_digital} to set the sampling frequency to $25$~Hz and re-run
+\begin{lstlisting}[language=bash]
+python -m scripts.tutorials digital --output-dir figures
+\end{lstlisting}
+to regenerate \texttt{figures/digital\_sampling\_spectrum.png} with both the original 20~Hz peak and the aliased 5~Hz component.
+
+Execution jitter produces an equivalent phase lag. If a task scheduled for $T_s = 10$~ms experiences a worst-case delay of $\delta = 2$~ms, the additional phase lag near crossover frequency $\omega_c$ is approximately $\Delta \phi \approx -\omega_c \delta$. For $\omega_c = 30$~rad/s, the lag reaches $-3.4^{\circ}$. Extend \texttt{tutorial\_digital} to draw a random delay (e.g., uniform in $[0, \delta]$) before each controller evaluation and log the resulting margins so that \texttt{figures/digital\_jitter\_margin.png} captures the degradation.
+
+\section{Controller Discretization}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Methods for converting continuous controllers into stable, accurate discrete implementations.
+    \item[\textbf{Why?}] Naïve discretisation can destabilise loops; understanding mapping choices preserves design intent.
+    \item[\textbf{When?}] After designing continuous compensators and before coding them in embedded firmware.
+    \item[\textbf{How?}] Choose an $s\mapsto z$ mapping (forward/backward Euler, Tustin), derive discrete transfer functions, and test numerically.
+    \item[\textbf{Example}] Discretise a lead compensator with Tustin and compare with the exact ZOH discretisation produced by SciPy’s \texttt{cont2discrete}.
+\end{beginnerguide}
+Common $s \mapsto z$ mappings:
+\begin{align}
+    s &\approx \frac{z - 1}{T_s} && \text{(forward Euler)},\\
+    s &\approx \frac{z - 1}{z T_s} && \text{(backward Euler)},\\
+    s &\approx \frac{2}{T_s} \frac{z - 1}{z + 1} && \text{(Tustin/bilinear)}.
+\end{align}
+Forward Euler is simple but may destabilize high-frequency dynamics; Tustin preserves stability and usually offers better fidelity. Always implement derivative terms with low-pass filtering to avoid amplifying noise.
+
+\section{Quantization, Saturation, and Noise}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Practical nonidealities introduced by finite resolution and actuator limits.
+    \item[\textbf{Why?}] These effects can erode performance or cause instability if ignored during design.
+    \item[\textbf{When?}] During controller implementation and hardware testing.
+    \item[\textbf{How?}] Model quantisation as rounding, include saturation blocks, and simulate noise to evaluate robustness.
+    \item[\textbf{Example}] Run the simulator with \texttt{quantization=1e-4} and actuator limits to see how PID integral windup appears without anti-windup logic.
+\end{beginnerguide}
+Finite resolution introduces quantization noise. Simulate the effects with the harness:
+\begin{lstlisting}[language=python, caption={Quantization impact}]
+result = simulate_discrete_system(
+    Ad, Bd, C,
+    controller_step,
+    ts=Ts,
+    steps=3000,
+    reference=lambda k: 0.05 if k > 50 else 0.0,
+    measurement_noise_std=5e-4,
+    quantization=1e-4,
+    actuator_limits=(-5.0, 5.0),
+)
+print(result.performance_metrics())
+\end{lstlisting}
+Integral action must incorporate anti-windup logic to prevent integrator windup when actuators saturate. Options include integral state clamping or back-calculation.
+
+\subsection{Code Mapping}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{4cm}|X|X|}
+        \hline
+        \textbf{Python} & \textbf{Formula} & \textbf{Explanation} \\
+        \hline
+        Simulator option & $y_k^\text{meas} = \text{round}(y_k/\Delta) \Delta$ & Uses the quantization flag in \texttt{simulate\_discrete\_system} to enforce the step size $\Delta$. \\
+        \hline
+        \texttt{PIDController.step()} & Anti-windup logic & Includes saturation checks and integral clamping/back-calculation. \\
+        \hline
+    \end{tabularx}
+    \caption{Digital implementation effects mapped to simulation code.}
+\end{table}
+
+\section{Tutorial: Digital Control Experimentation}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Scripted experiments exploring sampling, delay, and quantisation effects on PID loops.
+    \item[\textbf{Why?}] Hands-on trials highlight the performance penalties of implementation constraints.
+    \item[\textbf{When?}] Before deploying code to hardware or when documenting digital design trade-offs.
+    \item[\textbf{How?}] Execute \tutorialcmd[--output-dir figures]{digital}\\and compare ideal versus nonideal scenarios.
+    \item[\textbf{Example}] Generate \texttt{figures/digital\_pid\_responses.png} to compare nominal and delayed executions, noting increased oscillations due to jitter.
+\end{beginnerguide}
+\begin{enumerate}[leftmargin=*]
+    \item Generate the digital-control figures with\\
+    \tutorialcmd[--output-dir figures]{digital}.
+    \item Study Figure~\ref{fig:digital-responses} to compare ideal, quantized, and delayed PID loops; note how quantization amplifies steady-state error while delay introduces oscillation.
+    \item Examine Figure~\ref{fig:digital-spectrum} to see how different sampling periods reshape the output spectrum, echoing the sampling guidelines of \textcite{astrom2006advanced}.
+    \item Inspect Figure~\ref{fig:digital-controls} to assess actuator usage under each scenario and motivate anti-windup strategies.
+\end{enumerate}
+Command-line recipes for rebuilding these figures and compiling the notes are summarised in Appendix~\ref{chap:tooling}.
+\IfFileExists{../figures/digital_pid_responses.png}{
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.75\linewidth]{../figures/digital_pid_responses.png}
+        \caption{Impact of quantization and sensor delay on PID tracking.}
+        \label{fig:digital-responses}
+    \end{figure}
+}{
+    \begin{figure}[h]
+        \centering
+        \fbox{\parbox{0.7\linewidth}{Run \tutorialcmd{digital}\\to create \texttt{figures/digital\_pid\_responses.png}, then recompile.}}
+        \caption{Placeholder for the digital PID response comparison.}
+        \label{fig:digital-responses}
+    \end{figure}
+}
+\IfFileExists{../figures/digital_pid_controls.png}{
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.75\linewidth]{../figures/digital_pid_controls.png}
+        \caption{Control effort under ideal, quantized, and delayed execution.}
+        \label{fig:digital-controls}
+    \end{figure}
+}{
+    \begin{figure}[h]
+        \centering
+        \fbox{\parbox{0.7\linewidth}{Generate \texttt{figures/digital\_pid\_controls.png} via the digital tutorial to visualise actuator demands.}}
+        \caption{Placeholder for the digital control-effort comparison.}
+        \label{fig:digital-controls}
+    \end{figure}
+}
+\IfFileExists{../figures/digital_sampling_spectrum.png}{
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.75\linewidth]{../figures/digital_sampling_spectrum.png}
+        \caption{Output spectra for multiple sampling periods.}
+        \label{fig:digital-spectrum}
+    \end{figure}
+}{
+    \begin{figure}[h]
+        \centering
+        \fbox{\parbox{0.7\linewidth}{Generate \texttt{figures/digital\_sampling\_spectrum.png} via the digital tutorial to examine sampling effects.}}
+        \caption{Placeholder for the sampling-spectrum comparison.}
+        \label{fig:digital-spectrum}
+    \end{figure}
+}
+
+\section{Scheduling and Real-Time Constraints}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Considerations for meeting timing deadlines and mitigating jitter in real-time systems.
+    \item[\textbf{Why?}] Missed deadlines or variable execution times translate into effective delays that can destabilise control loops.
+    \item[\textbf{When?}] While allocating tasks to processors or designing RTOS schedules.
+    \item[\textbf{How?}] Profile computation, budget slack, add watchdogs, and design with extra phase margin to tolerate jitter.
+    \item[\textbf{Example}] Estimate phase margin loss using $\Delta\phi \approx -\omega_c \delta$ for a task with \SI{2}{ms} jitter at $\omega_c=30$~rad/s.
+\end{beginnerguide}
+Digital controllers execute on embedded processors with finite resources:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Computation time}: the control algorithm must finish within $T_s$. Profiling and fixed-point optimization may be necessary on microcontrollers.
+    \item \textbf{Jitter}: Variations in execution time act as multiplicative uncertainty. Design with additional phase margin to accommodate jitter.
+    \item \textbf{Latency}: Sensor-to-actuator delays reduce effective phase margin; compensate via Smith predictors or redesign with lower bandwidth.
+\end{itemize}
+
+\section{Validation Pipeline}
+\begin{beginnerguide}
+    \item[\textbf{What?}] A staged approach (SIL $\rightarrow$ PIL $\rightarrow$ HIL) for verifying controllers before deployment.
+    \item[\textbf{Why?}] Structured validation catches issues early, reducing risk during hardware trials.
+    \item[\textbf{When?}] After implementing the controller in software and before integration with the physical plant.
+    \item[\textbf{How?}] Simulate with software-in-the-loop, execute on target hardware with plant models, then connect to real sensors/actuators.
+    \item[\textbf{Example}] Run SIL simulations with quantisation enabled, then execute the same control law on a development board in PIL mode to compare timing.
+\end{beginnerguide}
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Software-in-the-loop (SIL)}: run Python simulations that include quantization, saturation, noise, and network-related effects.
+    \item \textbf{Processor-in-the-loop (PIL)}: execute compiled control code on the target processor while interfacing with a simulator to measure timing and numerical precision.
+    \item \textbf{Hardware-in-the-loop (HIL)}: connect actual hardware sensors and actuators (or a real-time plant emulator) to validate end-to-end behavior before deploying to the real system.
+\end{enumerate}
+Document the validation steps in the appendix, embedding diagnostic plots and logging procedures.
+
+\section{Implementation Checklist}
+\begin{beginnerguide}
+    \item[\textbf{What?}] A quick audit of numerical and safety considerations prior to release.
+    \item[\textbf{Why?}] Ensures critical safeguards—overflow protection, watchdogs, reproducible builds—are in place.
+    \item[\textbf{When?}] Immediately before deploying firmware or handing off to quality assurance.
+    \item[\textbf{How?}] Walk through the checklist items: scaling, anti-windup, watchdog timers, configuration management.
+    \item[\textbf{Example}] Confirm integral states are clamped to actuator limits and that configuration files record the exact PID gains shipped.
+\end{beginnerguide}
+\begin{itemize}[leftmargin=*]
+    \item Verify numerical robustness (overflow, quantization, scaling) for fixed-point implementations.
+    \item Use watchdog timers and safety interlocks to handle communication failures or saturation events.
+    \item Maintain reproducible build scripts and configuration management so that controller parameters match the documentation.
+\end{itemize}
+
+\begin{takeaway}
+\begin{itemize}[leftmargin=*]
+    \item Digital implementation details significantly influence real-world performance; treat them as part of the control design process.
+    \item Proper discretization, anti-windup, and scheduling analysis prevent instability caused by sampling and computational effects.
+    \item A staged validation strategy (SIL $\rightarrow$ PIL $\rightarrow$ HIL) mitigates risk before deploying controllers to physical hardware.
+\end{itemize}
+\end{takeaway}
+
+\section{Module Review}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Sampling}: check Nyquist ($\omega_s > 2\omega_{\max}$) and preview aliasing via Figure~\ref{fig:digital-spectrum}; adjust $T_s$ accordingly.
+    \item \textbf{Quantisation/delay}: evaluate tracking degradation (Figure~\ref{fig:digital-responses}) and control effort (Figure~\ref{fig:digital-controls}); implement anti-windup where saturation is visible.
+    \item \textbf{Workflow}: follow the SIL $\rightarrow$ PIL $\rightarrow$ HIL path; capture logs and reproduce the tutorial to document scenarios.
+    \item \textbf{Practice}: run \tutorialcmd{digital} and explore network-induced jitter or sensor noise to build intuition before hardware deployment.
+    \item \textbf{Reading}: \textcite{astrom2006advanced} Ch.~11 for sampled-data issues and \textcite{ljung2012control} Ch.~12 for implementation case studies.
+\end{itemize}
+
+\section{Keyword Review}
+\begin{vocabulary}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Sampling period $T_s$}: time between controller updates; sets discrete-time dynamics.
+    \item \textbf{Aliasing}: misinterpretation of high-frequency signals when $T_s$ violates Nyquist.
+    \item \textbf{Jitter}: variation in execution timing that behaves like additional delay.
+    \item \textbf{Quantization}: rounding of signals to discrete levels, introducing effective noise.
+    \item \textbf{Anti-windup}: strategy to prevent integrator accumulation during saturation.
+    \item \textbf{HIL testing}: hardware-in-the-loop validation combining real controllers with simulated plants.
+\end{itemize}
+\end{vocabulary}

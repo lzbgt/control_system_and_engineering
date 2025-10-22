@@ -1,0 +1,11 @@
+*.aux
+*.log
+*.out
+*.toc
+*.blg
+*.bbl
+*.bcf
+*.gz
+.venv/
+__pycache__/
+figures/*.png

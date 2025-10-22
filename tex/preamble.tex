@@ -1,0 +1,53 @@
+% Preamble for Control Theory course book
+\documentclass[11pt]{book}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{fontspec}
+\setmainfont{Latin Modern Roman}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{physics}
+\usepackage{siunitx}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=newest}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{listings}
+\lstset{basicstyle=\ttfamily\footnotesize, breaklines=true, frame=single}
+\usepackage{csquotes}
+\usepackage[backend=biber,style=ieee]{biblatex}
+\addbibresource{../tex/references.bib}
+
+% Custom commands
+\newcommand{\vect}[1]{\mathbf{#1}}
+\newcommand{\mat}[1]{\mathbf{#1}}
+\newcommand{\T}{^{\mathsf{T}}}
+\providecommand{\diag}{\operatorname{diag}}
+\providecommand{\rank}{\operatorname{rank}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\C}{\mathbb{C}}
+
+\newtheorem{definition}{Definition}[chapter]
+\newtheorem{theorem}{Theorem}[chapter]
+\newtheorem{example}{Example}[chapter]
+\newtheorem{remark}{Remark}[chapter]
+\newtheorem{lemma}{Lemma}[chapter]
+
+% Colored note environments for pedagogy
+\newenvironment{learningobjective}{\begin{quote}\textbf{Learning Objectives}\\}{\end{quote}}
+\newenvironment{takeaway}{\begin{quote}\textbf{Key Takeaways}\\}{\end{quote}}
+\newenvironment{conceptroadmap}{\begin{quote}\textbf{Concept Map}\\}{\end{quote}}
+\newenvironment{vocabulary}{\begin{quote}\textbf{Keywords}\\}{\end{quote}}
+\newenvironment{beginnercheck}{\begin{quote}\textbf{Beginner Checks}\\}{\end{quote}}
+\newenvironment{beginnerguide}{\begin{description}[leftmargin=2.5em,style=nextline]}{\end{description}}
+\newcommand{\tutorialcmd}[2][]{%
+  \texttt{python -m scripts.tutorials #2%
+  \if\relax\detokenize{#1}\relax\else\ #1\fi}}

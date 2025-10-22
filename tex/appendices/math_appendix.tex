@@ -1,0 +1,106 @@
+\chapter{Mathematical Background}
+\label{chap:math-appendix}
+
+\section{Linear Algebra Reference}
+\subsection{Eigenvalues and Modal Decomposition}
+For $A \in \R^{n \times n}$ with distinct eigenvalues, the modal decomposition $A = V \Lambda V^{-1}$ expresses solutions of $\dot{x} = A x$ as
+\begin{equation}
+    x(t) = V \mathrm{e}^{\Lambda t} V^{-1} x(0) = \sum_{i=1}^{n} \mathrm{e}^{\lambda_i t} v_i c_i,
+\end{equation}
+where $v_i$ are eigenvectors and $c_i$ scalar weights. Complex conjugate eigenvalues form oscillatory modes.
+
+\subsection{Matrix Norms and Conditioning}
+The induced 2-norm $\|A\|_2$ equals the largest singular value of $A$. Condition numbers obey $\kappa_2(A) = \sigma_{\max}(A) / \sigma_{\min}(A)$ and measure sensitivity of linear solves. When $\kappa_2(A)$ is large, numerical errors can significantly distort state-space computations.
+
+\subsection{Pseudoinverse}
+For non-square matrices, the Moore--Penrose pseudoinverse $A^+ = V \Sigma^+ U^T$ (from SVD $A = U \Sigma V^T$) yields minimum-norm least-squares solutions to $A x = b$ via $x = A^+ b$.
+
+\section{Differential Equations}
+\subsection{Variation of Parameters}
+For $\dot{x} = A x + B u$, define the transition matrix $\Phi(t, t_0) = \mathrm{e}^{A (t - t_0)}$. The solution with time-varying input is
+\begin{equation}
+    x(t) = \Phi(t, t_0) x(t_0) + \int_{t_0}^{t} \Phi(t, \tau) B u(\tau)\, \mathrm{d}\tau.
+\end{equation}
+Discrete-time analog: $x_{k+1} = A_d x_k + B_d u_k$ with $A_d = \mathrm{e}^{A T_s}$ and $B_d$ defined similarly.
+
+\subsection{Riccati Equations}
+The discrete algebraic Riccati equation (DARE) appears in LQR and Kalman filtering:
+\begin{equation}
+    P = A^T P A - A^T P B (B^T P B + R)^{-1} B^T P A + Q.
+\end{equation}
+Solution existence requires $(A, B)$ stabilizable and $(A, Q^{1/2})$ detectable.
+
+\section{Laplace Transform Reference}
+For a causal signal $x(t)$,
+\[
+    X(s) = \mathcal{L}\{x(t)\} = \int_{0}^{\infty} x(t) \mathrm{e}^{-s t}\, \mathrm{d}t.
+\]
+Table~\ref{tab:laplace-pairs} lists representative pairs used throughout the notes.
+\begin{table}[h]
+    \centering
+    \begin{tabular}{lll}
+        \toprule
+        Time signal & Transform & Notes \\
+        \midrule
+        $1$ & $1/s$ & Step input \\
+        $t$ & $1/s^2$ & Ramp input \\
+        $\mathrm{e}^{-a t}$ & $1/(s + a)$ & Delay property \\
+        $\sin(\omega t)$ & $\omega/(s^2 + \omega^2)$ & Imaginary poles \\
+        $\cos(\omega t)$ & $s/(s^2 + \omega^2)$ & Even symmetry \\
+        $\delta(t - t_0)$ & $\mathrm{e}^{-s t_0}$ & Shifted impulse \\
+        \bottomrule
+    \end{tabular}
+    \caption{Selected Laplace transform pairs.}
+    \label{tab:laplace-pairs}
+\end{table}
+Key properties: differentiation $\Rightarrow \mathcal{L}\{\dot{x}\} = s X(s) - x(0)$, integration $\Rightarrow \mathcal{L}\{\int_{0}^{t} x\} = X(s)/s$, and convolution $\Rightarrow \mathcal{L}\{x * y\} = X(s) Y(s)$.
+
+\section{$z$-Transform Reference}
+For a sequence $x[k]$,
+\[
+    X(z) = \mathcal{Z}\{x[k]\} = \sum_{k=0}^{\infty} x[k] z^{-k}.
+\]
+Table~\ref{tab:z-pairs} summarises canonical pairs along with their regions of convergence (ROC).
+\begin{table}[h]
+    \centering
+    \begin{tabular}{llll}
+        \toprule
+        Sequence & Transform & ROC & Notes \\
+        \midrule
+        $1$ & $1/(1 - z^{-1})$ & $|z| > 1$ & Unit step \\
+        $k$ & $z^{-1}/(1 - z^{-1})^2$ & $|z| > 1$ & Discrete ramp \\
+        $a^k$ & $1/(1 - a z^{-1})$ & $|z| > |a|$ & Exponential mode \\
+        $k a^k$ & $a z^{-1}/(1 - a z^{-1})^2$ & $|z| > |a|$ & Weighted exponential \\
+        $\delta[k - k_0]$ & $z^{-k_0}$ & All $z \neq 0$ & Shifted unit sample \\
+        \bottomrule
+    \end{tabular}
+    \caption{Selected $z$-transform pairs.}
+    \label{tab:z-pairs}
+\end{table}
+Useful identities: time shift $\Rightarrow \mathcal{Z}\{x[k - k_0]\} = z^{-k_0} X(z)$, forward shift $\Rightarrow \mathcal{Z}\{x[k+1]\} = z X(z) - x[0]$, and convolution $\Rightarrow \mathcal{Z}\{x * y\} = X(z) Y(z)$. The discretisation link $z = \exp(s T_s)$ connects continuous poles with their sampled counterparts as described in Chapter~\ref{chap:modeling}.
+
+\section{Probability Primer}
+\subsection{Gaussian Random Vectors}
+If $x \sim \mathcal{N}(\mu, \Sigma)$ and $y = C x + d$, then $y$ is Gaussian with mean $C \mu + d$ and covariance $C \Sigma C^T$. The conditional distribution of $x$ given $y$ is also Gaussian, forming the basis for Kalman filtering.
+
+\subsection{Law of Total Expectation and Variance}
+For random variables $X$ and $Y$,
+\begin{align}
+    \mathbb{E}[X] &= \mathbb{E}[ \mathbb{E}[X \mid Y]], \\
+    \operatorname{Var}(X) &= \mathbb{E}[ \operatorname{Var}(X \mid Y)] + \operatorname{Var}( \mathbb{E}[X \mid Y]).
+\end{align}
+These identities often appear when analyzing estimation error dynamics.
+
+\section{Scalar Kalman Filter Recap}
+For the scalar process
+\[
+    x_k = x_{k-1} + w_k,\qquad z_k = x_k + v_k,
+\]
+with $w_k \sim \mathcal{N}(0,Q)$ and $v_k \sim \mathcal{N}(0,R)$, the prediction/update equations simplify to
+\begin{align*}
+    \hat{x}_{k|k-1} &= \hat{x}_{k-1|k-1}, & P_{k|k-1} &= P_{k-1|k-1} + Q,\\
+    K_k &= \frac{P_{k|k-1}}{P_{k|k-1} + R}, &
+    \hat{x}_{k|k} &= \hat{x}_{k|k-1} + K_k (z_k - \hat{x}_{k|k-1}),\\
+    P_{k|k} &= (1 - K_k) P_{k|k-1}.
+\end{align*}
+The deduction mirrors the workflow in the standalone reference \texttt{kalman\_deduction.tex}: take expectations of the process equation for the prediction step, compute the innovation $y_k = z_k - \hat{x}_{k|k-1}$, and minimise the posterior variance with respect to $K_k$. This scalar case provides intuition before tackling the matrix equations in Chapter~\ref{chap:modern}.

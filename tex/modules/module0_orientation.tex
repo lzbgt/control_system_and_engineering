@@ -1,0 +1,301 @@
+\chapter{Orientation and Mathematical Refresh}
+\label{chap:orientation}
+
+\begin{learningobjective}
+\begin{itemize}[leftmargin=*]
+    \item Describe the role of control systems across engineering domains and how this course is organized.
+    \item Refresh the calculus and linear algebra tools repeatedly used in later derivations.
+    \item Configure the computational workflow that pairs LaTeX derivations with Python simulations and plots.
+\end{itemize}
+\end{learningobjective}
+
+\section{Concept Map for Beginners}
+\begin{conceptroadmap}
+\begin{enumerate}[leftmargin=*]
+    \item Anchor every new idea to an everyday closed-loop example (thermostats, cruise control) so abstract symbols immediately have a physical story.
+    \item Revisit the small collection of calculus and linear algebra tools that drive all later derivations, highlighting where they will reappear.
+    \item Build the code-and-notes workflow upfront so that every formula can be tested with the provided Python scripts minutes after you meet it on paper.
+\end{enumerate}
+\end{conceptroadmap}
+
+\section{Concept--Math--Engineering Loop}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{0.28\linewidth}|>{\raggedright\arraybackslash}p{0.34\linewidth}|>{\raggedright\arraybackslash}X|}
+        \hline
+        \textbf{Concept} & \textbf{Mathematics} & \textbf{Engineering Practice} \\
+        \hline
+        What a control loop does & Feedback block diagrams, equilibrium analysis & Sketch block diagrams for a familiar system (home heating) and label the signals. \\
+        \hline
+        Modeling ingredients & Taylor series, Jacobians, matrix exponentials & Run \texttt{mass\_spring\_damper.linearize()} to see symbolic derivatives show up numerically. \\
+        \hline
+        Tooling workflow & Sets, vectors, reproducibility & Activate \texttt{.venv}, install requirements, and execute \texttt{python demo.py pid} to connect math to plots. \\
+        \hline
+    \end{tabularx}
+    \caption{How Module~\ref{chap:orientation} links core concepts, enabling math, and hands-on engineering practice.}
+\end{table}
+
+\section{Why Study Control?}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Control designs feedback laws that steer dynamic systems toward desired behaviours despite disturbances and uncertainty.
+    \item[\textbf{Why?}] Feedback is the glue that holds modern engineering systems together—from autopilots to chemical reactors—so understanding it unlocks broad career pathways.
+    \item[\textbf{When?}] Whenever outputs must track references or respect safety constraints in the presence of changing environments or plant parameters.
+    \item[\textbf{How?}] Model the plant, analyse stability and performance, then synthesise controllers that close the loop.
+    \item[\textbf{Example}] Cruise control adjusts throttle based on speed error so a car holds \SI{100}{km/h} up and down hills without driver intervention.
+\end{beginnerguide}
+Control theory designs decision-making rules (\emph{controllers}) that regulate dynamic systems so that outputs track desired references despite disturbances and uncertainty. Examples include quadrotor attitude stabilization, cruise control for vehicles, temperature regulation in process plants, and biomedical drug delivery. Throughout the text we will focus on three pillars:
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Modeling} --- constructing mathematical representations of physical processes (Chapter~\ref{chap:modeling}).
+    \item \textbf{Analysis} --- predicting stability and performance from the model (Chapters~\ref{chap:time} and~\ref{chap:frequency}).
+    \item \textbf{Design \& Implementation} --- synthesizing controllers and estimators, then deploying them digitally (Chapters~\ref{chap:classical}--\ref{chap:digital}).
+\end{enumerate}
+
+\section{Using This Course}
+\begin{beginnerguide}
+    \item[\textbf{What?}] A reproducible workflow that unites \LaTeX{} derivations with Python simulations and figures.
+    \item[\textbf{Why?}] Seeing theory and code side by side accelerates learning and mirrors how professional control engineers iterate.
+    \item[\textbf{When?}] At the start of each module—set up the tools first so you can verify every formula immediately.
+    \item[\textbf{How?}] Follow the Makefile targets, activate the virtual environment, and run the curated scripts referenced throughout the notes.
+    \item[\textbf{Example}] Compile the book with \texttt{make}, then run \texttt{python demo.py pid --output figures/pid.png} to generate plots embedded in Chapter~\ref{chap:time}.
+\end{beginnerguide}
+\subsection{Document Workflow}
+All material is authored in \LaTeX{} and compiled with Xe\LaTeX{} using the \texttt{Makefile}. Each chapter introduces learning objectives, theoretical development, and explicit references to executable Python examples located in \texttt{scripts/}. Appendix~\ref{chap:tooling} (Tooling and Workflow) collects step-by-step build commands and figure-generation recipes; refer to it whenever you need a quick reminder.
+
+\subsection{Python Companion Environment}
+Activate the virtual environment and install dependencies with
+\begin{lstlisting}[language=bash]
+source .venv/bin/activate
+pip install -r requirements.txt
+\end{lstlisting}
+The command
+\begin{lstlisting}[language=bash]
+python demo.py pid
+\end{lstlisting}
+invokes the canonical mass--spring--damper experiment. By default, plots are displayed using Matplotlib; pass \texttt{--no-plot} to suppress figures when running in headless environments and \texttt{--output} to save them for inclusion in the notes.
+Appendix~\ref{chap:tooling} also tabulates the supported experiments and recommended output directories so you can regenerate figures chapter by chapter.
+
+\section{Mathematical Toolkit}
+\begin{beginnerguide}
+    \item[\textbf{What?}] A compact refresher on calculus and linear algebra tools underpinning every derivation in the course.
+    \item[\textbf{Why?}] Mastery of Taylor series, Jacobians, and matrix exponentials turns intimidating control proofs into routine calculations.
+    \item[\textbf{When?}] Before diving into modelling or controller design—return here whenever you need to recall a formula.
+    \item[\textbf{How?}] Review each subsection, run the linked Python snippets, and practice deriving the same quantities for your own example systems.
+    \item[\textbf{Example}] Linearise pendulum dynamics using the Jacobian, then compare $\mathrm{e}^{A t}$ from the matrix exponential with numerical integration to verify the approximation.
+\end{beginnerguide}
+\subsection{Single-Variable Calculus}
+We model systems with differential equations such as
+\begin{equation}
+    \dot{x}(t) = f\big(x(t), u(t), t\big),
+\end{equation}
+where $x$ denotes the state and $u$ the control input. Linearizing about an operating point $(x_\text{e}, u_\text{e})$ uses the first-order Taylor series
+\begin{equation}
+    f(x, u) \approx f(x_\text{e}, u_\text{e}) + \pdv{f}{x}\bigg\vert_{(x_\text{e}, u_\text{e})} (x - x_\text{e}) + \pdv{f}{u}\bigg\vert_{(x_\text{e}, u_\text{e})} (u - u_\text{e}).
+\end{equation}
+\begin{description}[leftmargin=2.5em, style=nextline]
+    \item[\textbf{What?}] A Taylor series approximates a smooth function by a polynomial whose coefficients are the derivatives of the function at an expansion point.
+    \item[\textbf{Why?}] Polynomials are easy to manipulate, so replacing a nonlinear model with its Taylor approximation lets us reason about dynamics using linear algebra.
+    \item[\textbf{How?}] Compute derivatives at $(x_\text{e}, u_\text{e})$, plug them into the polynomial, and truncate after the desired order (first order for linearization).
+    \item[\textbf{When?}] Whenever we analyse behaviour near an equilibrium or operating point—controllers rely on these local linear models.
+\end{description}
+To see the mechanics concretely, consider the scalar drag model $f(x,u) = -c x^2 + u$ around $(x_\text{e}, u_\text{e}) = (0, 0)$. The derivative $\dv{f}{x} = -2 c x$ evaluates to zero at the equilibrium, so the linear approximation reduces to $\Delta \dot{x} \approx 1 \cdot \Delta u$. This worked example clarifies why the Jacobian entries are simply slopes of $f$ along each variable.
+In the multi-variable setting, the partial-derivative notation $\pdv{f}{x}$ denotes a row vector of partial derivatives with respect to every component of $x$; the scripts in \texttt{scripts/dynamics.py} (e.g., \texttt{mass\_spring\_damper.linearize()}) automate this Jacobian evaluation. Run
+\begin{lstlisting}[language=python]
+from scripts.dynamics import mass_spring_damper
+plant = mass_spring_damper()
+print(plant.linearize_about_equilibrium())
+\end{lstlisting}
+to print both $f(x_\text{e}, u_\text{e})$ and the associated Jacobians, linking the pen-and-paper expansion to executable code.
+
+\subsection{Jacobian Matrices}
+The \emph{Jacobian} $J_f(x)$ of a vector-valued function $f:\mathbb{R}^n \rightarrow \mathbb{R}^m$ collects all first-order partial derivatives:
+\[
+    J_f(x) = \begin{bmatrix}
+        \dfrac{\partial f_1}{\partial x_1} & \dots & \dfrac{\partial f_1}{\partial x_n} \\
+        \vdots & \ddots & \vdots \\
+        \dfrac{\partial f_m}{\partial x_1} & \dots & \dfrac{\partial f_m}{\partial x_n}
+    \end{bmatrix}.
+\]
+\begin{description}[leftmargin=2.5em, style=nextline]
+    \item[\textbf{What?}] A compact way to measure how a multivariable function changes with respect to each input direction.
+    \item[\textbf{Why?}] The Jacobian is the bridge between nonlinear systems and linear tools; it tells us how small perturbations map through the dynamics.
+    \item[\textbf{How?}] Differentiate each output component with respect to each input variable; evaluate at the operating point.
+    \item[\textbf{When?}] Use Jacobians to linearize nonlinear dynamics, propagate uncertainties (e.g., EKF), and compute sensitivities in optimisation.
+\end{description}
+Numerical example: linearize the pendulum dynamics $f(\theta,\dot{\theta}) = [\dot{\theta}, -\frac{g}{\ell} \sin\theta]^{\top}$ near the upright position $(\theta, \dot{\theta}) = (0,0)$. The Jacobian evaluates to
+\[
+    J_f(0,0) =
+    \begin{bmatrix}
+        0 & 1 \\
+        -\dfrac{g}{\ell} & 0
+    \end{bmatrix},
+\]
+immediately revealing the familiar small-angle linear model.
+You can reproduce this computation with SymPy:
+\begin{lstlisting}[language=python]
+import sympy as sp
+theta, dtheta, g, ell = sp.symbols("theta dtheta g ell")
+f = sp.Matrix([dtheta, -(g/ell)*sp.sin(theta)])
+J = f.jacobian([theta, dtheta]).subs({theta: 0})
+print(sp.simplify(J))
+\end{lstlisting}
+
+A similar Taylor expansion extends to multi-variable functions, with gradients and Jacobians capturing sensitivity.
+
+\subsection{Ordinary Differential Equations}
+Linear time-invariant (LTI) systems take the canonical form
+\begin{equation}
+    \dot{x}(t) = A x(t) + B u(t), \qquad y(t) = C x(t) + D u(t),
+\end{equation}
+where $A \in \R^{n \times n}$ governs autonomous dynamics. The matrix exponential provides the closed-form solution
+\begin{equation}
+    x(t) = \mathrm{e}^{A(t - t_0)} x(t_0) + \int_{t_0}^{t} \mathrm{e}^{A(t - \tau)} B u(\tau)\, \mathrm{d}\tau.
+\end{equation}
+We will discretize continuous models using zero-order holds (ZOH) in Chapter~\ref{chap:modeling} and in \texttt{scripts/dynamics.py}.
+To build intuition for the matrix exponential, expand the scalar first-order system $\dot{x} = a x$ where the closed-form solution $x(t) = \mathrm{e}^{a(t - t_0)} x(t_0)$ is obtained by integrating $\dot{x}/x = a$. The multi-state formula above is the vector generalisation where $\mathrm{e}^{A(t - t_0)}$ replaces the scalar $\mathrm{e}^{a(t - t_0)}$. The helper \texttt{plant.step\_response()} prints both continuous and discrete predictions so you can compare them numerically.
+\begin{description}[leftmargin=2.5em, style=nextline]
+    \item[\textbf{What?}] The matrix exponential $\mathrm{e}^{A t}$ advances the state of a linear system over time $t$.
+    \item[\textbf{How?}] Either compute the infinite series $\sum_{k=0}^{\infty} \frac{(A t)^k}{k!}$ or use numerical routines (\texttt{scipy.linalg.expm}) which leverage eigen-decompositions or scaling/squaring.
+    \item[\textbf{When?}] Use it to solve continuous linear systems exactly, to discretize models for digital control, and to express sensitivity to sampling time.
+\end{description}
+Concrete example: consider $A = \begin{bmatrix}0 & 1 \\ -4 & -0.4\end{bmatrix}$ (mass--spring--damper with $m=1$, $k=4$, $c=0.4$). With $T_s = 0.01$~s,
+\[
+    A_d = \mathrm{e}^{A T_s} \approx
+    \begin{bmatrix}
+        0.9990 & 0.00995 \\
+        -0.0398 & 0.9910
+    \end{bmatrix},
+\]
+showing how the continuous dynamics map to discrete time. Verify numerically:
+\begin{lstlisting}[language=python]
+import numpy as np
+from scipy.linalg import expm
+
+A = np.array([[0.0, 1.0], [-4.0, -0.4]])
+Ts = 0.01
+Ad = expm(A * Ts)
+print(np.round(Ad, 4))
+\end{lstlisting}
+The result matches the automatically generated matrices from \texttt{mass\_spring\_damper().discretize(Ts)}, reinforcing the link between analytic formulas and the course scripts.
+
+\subsubsection*{Matrix Exponential Recipes via Eigenstructure}
+When $A$ is diagonalizable ($A = V \Lambda V^{-1}$ with $\Lambda = \operatorname{diag}(\lambda_1,\dots,\lambda_n)$), the exponential is
+\[
+    \mathrm{e}^{A t} = V\, \mathrm{e}^{\Lambda t} V^{-1}, \qquad
+    \mathrm{e}^{\Lambda t} = \operatorname{diag}\big(e^{\lambda_1 t}, \dots, e^{\lambda_n t}\big).
+\]
+\begin{description}[leftmargin=2.5em, style=nextline]
+    \item[\textbf{Why?}] This formula reuses the scalar exponential on each eigenvalue and wraps the result back into the original coordinates through $V$.
+    \item[\textbf{How to apply?}] Compute eigenvalues/eigenvectors (e.g., \texttt{np.linalg.eig}), form $V$, and evaluate the diagonal exponential.
+\end{description}
+If $A$ is not diagonalizable, use the Jordan decomposition $A = V J V^{-1}$ with Jordan blocks
+\[
+    J = \begin{bmatrix}
+        J_1 && 0 \\
+        & \ddots & \\
+        0 && J_k
+    \end{bmatrix}, \qquad
+    J_\ell = \begin{bmatrix}
+        \lambda_\ell & 1 & & 0 \\
+        & \lambda_\ell & \ddots & \\
+        & & \ddots & 1 \\
+        0 & & & \lambda_\ell
+    \end{bmatrix}.
+\]
+Each Jordan block exponentiates to
+\[
+    \mathrm{e}^{J_\ell t} = e^{\lambda_\ell t}
+    \begin{bmatrix}
+        1 & t & \frac{t^2}{2!} & \cdots \\
+        0 & 1 & t & \ddots \\
+        \vdots & \ddots & \ddots & \frac{t^2}{2!} \\
+        0 & \cdots & 0 & 1
+    \end{bmatrix},
+\]
+which follows from the nilpotent part $N = J_\ell - \lambda_\ell I$ satisfying $N^m = 0$ for some $m$.
+\begin{description}[leftmargin=2.5em, style=nextline]
+    \item[\textbf{What does this buy us?}] The Jordan form handles repeated eigenvalues and gives a constructive way to write $\mathrm{e}^{A t}$ using polynomials in $t$ times the familiar $e^{\lambda t}$ factor.
+    \item[\textbf{When to use it?}] Whenever $A$ has repeated eigenvalues without a full set of eigenvectors (common in controllable canonical forms or companion matrices).
+    \item[\textbf{How to compute?}] Libraries such as SymPy expose \texttt{.jordan\_cells()} and \texttt{.exp()}, but the block formula above is short enough to implement manually for $2\times 2$ or $3\times 3$ cases.
+\end{description}
+Numerical illustration: a Jordan block with repeated eigenvalue $-2$,
+\[
+    A = \begin{bmatrix}-2 & 1\\ 0 & -2\end{bmatrix}
+\]
+has exponential
+\[
+    \mathrm{e}^{A t} = e^{-2 t} \begin{bmatrix}1 & t \\ 0 & 1\end{bmatrix}.
+\]
+Check against Python:
+\begin{lstlisting}[language=python]
+import sympy as sp
+t = sp.symbols('t', real=True)
+A = sp.Matrix([[-2, 1],
+               [ 0,-2]])
+print(sp.exp(A*t))
+\end{lstlisting}
+The output matches the hand-derived block formula, validating the process.
+
+\paragraph{Linking Jacobians and Matrix Exponentials.}
+Linearizing a nonlinear system $\dot{x} = f(x,u)$ at an equilibrium $(x_\text{e},u_\text{e})$ produces the Jacobian $A = \left.\frac{\partial f}{\partial x}\right|_{x_\text{e},u_\text{e}}$. This $A$ governs local dynamics, so $\mathrm{e}^{A t}$ describes how small perturbations around the equilibrium evolve. In practice:
+\begin{enumerate}[leftmargin=*]
+    \item Compute the Jacobian matrix with respect to the state.
+    \item Use eigenvalue or Jordan-based formulas to evaluate $\mathrm{e}^{A t}$ (analytically or numerically).
+    \item Interpret the result: diagonal entries describe independent modes, while off-diagonal polynomial terms reveal coupling introduced by repeated eigenvalues.
+\end{enumerate}
+This chain—\emph{Jacobian $\rightarrow$ state matrix $A$ $\rightarrow$ matrix exponential}—is central to every chapter that studies stability, discretization, or observer/controller design.
+
+\subsection{Linear Algebra Refresher}
+Key operations:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Eigenvalues} of $A$ solve $\det(A - \lambda I) = 0$ and determine the natural modes $\mathrm{e}^{\lambda t}$.
+    \item \textbf{Controllability} and \textbf{observability} utilize the matrices
+    \begin{equation}
+        \mathcal{C} = [B\; AB\; A^2B\; \dots\; A^{n-1}B], \qquad
+        \mathcal{O} =
+        \begin{bmatrix}
+            C\\ CA\\ \vdots \\ CA^{n-1}
+        \end{bmatrix}.
+    \end{equation}
+      Full rank for $\mathcal{C}$ ($\operatorname{rank}=n$) ensures arbitrary state reachability; full rank for $\mathcal{O}$ ensures the state can be reconstructed from outputs.
+    \item \textbf{Singular Value Decomposition (SVD)} helps assess system gains and robustness.
+\end{itemize}
+
+\subsection{Complex Exponentials and Transforms}
+Frequency-domain analysis relies on Euler's identity $\mathrm{e}^{j \omega t} = \cos \omega t + j \sin \omega t$. The Laplace transform converts a differential equation to the algebraic relation
+\begin{equation}
+    (sI - A) X(s) = x(0) + B U(s), \quad Y(s) = C X(s) + D U(s).
+\end{equation}
+Discretization leads to the $z$-transform, which maps $x_{k+1} = A_d x_k + B_d u_k$ to $(zI - A_d) X(z) = x_0 + B_d U(z)$.
+
+\section{Learning Roadmap}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Module 1} formalizes modeling pipelines and demonstrates linearization and discretization in Python.
+    \item \textbf{Module 2} analyzes time-domain response metrics---rise time, settling time, overshoot---with PID control demonstrations.
+    \item \textbf{Module 3} pivots to frequency-response tools such as Bode and Nyquist plots.
+    \item \textbf{Module 4} designs classical controllers (PID, lead/lag) with tuned simulations.
+    \item \textbf{Modules 5--6} introduce modern state-space control, LQR, Kalman filtering, and adaptive methods.
+    \item \textbf{Module 7} addresses digital implementation details, linking theory to practical deployment.
+    \item \textbf{Module 8} explores data-driven modeling, PDE adaptive control, and nonlinear stability foundations.
+    \item \textbf{Module 9} introduces Active Disturbance Rejection Control (ADRC) with observers and disturbance estimation inspired by \textcite{han2009auto,gao2006active}.
+    \item \textbf{Suggested reading}: \textcite{astrom1995pid,astrom2006advanced} for PID design intuition, \textcite{ljung2012control} for the bridge between classical, data-driven, and state-space views, and \textcite{krstic1995nonlinear} for adaptive-control insights in both ODE and PDE settings.
+\end{itemize}
+
+\begin{takeaway}
+\begin{itemize}[leftmargin=*]
+    \item Strong fundamentals in calculus, linear algebra, and complex analysis accelerate mastery of control concepts.
+    \item Maintain a reproducible workflow: derive equations in \LaTeX{}, validate with Python, and include generated figures in the notes.
+\end{itemize}
+\end{takeaway}
+
+\section{Keyword Review}
+\begin{vocabulary}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Control loop}: the feedback structure that continually compares measured output with a reference.
+    \item \textbf{State}: the smallest set of variables that fully describes the system at an instant.
+    \item \textbf{Linearization}: using first-order Taylor series to approximate nonlinear dynamics near an equilibrium.
+    \item \textbf{Matrix exponential}: the operator $\mathrm{e}^{A t}$ that evolves linear state-space models forward in time.
+    \item \textbf{Reproducible workflow}: the pairing of \LaTeX{} derivations with version-controlled Python experiments.
+\end{itemize}
+\end{vocabulary}

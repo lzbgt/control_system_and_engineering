@@ -1,0 +1,263 @@
+\chapter{Classical Controller Design}
+\label{chap:classical}
+
+\begin{learningobjective}
+\begin{itemize}[leftmargin=*]
+    \item Derive continuous and discrete PID controllers, understand tuning guidelines, and identify practical limitations.
+    \item Shape loop dynamics with lead, lag, and lead--lag compensators to achieve robustness and steady-state requirements.
+    \item Follow detailed case studies that connect analytic calculations to Python-based validation.
+\end{itemize}
+\end{learningobjective}
+
+\section{Concept Map for Beginners}
+\begin{conceptroadmap}
+\begin{enumerate}[leftmargin=*]
+    \item Interpret PID gains as levers on rise time, steady-state error, and noise; translate every algebraic step into a physical effect.
+    \item Use structured tuning templates (Ziegler--Nichols, direct synthesis) to move from specifications to controller parameters.
+    \item Validate designs through simulation plots and logged metrics, reinforcing the idea that analytic formulas are hypotheses verified in code.
+\end{enumerate}
+\end{conceptroadmap}
+
+\section{Concept--Math--Engineering Loop}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{0.28\linewidth}|>{\raggedright\arraybackslash}p{0.34\linewidth}|>{\raggedright\arraybackslash}X|}
+        \hline
+        \textbf{Concept} & \textbf{Mathematics} & \textbf{Engineering Practice} \\
+        \hline
+        PID synthesis & Laplace-domain derivation, Tustin discretization & Inspect coefficients via \texttt{PIDController.print\_incremental\_coefficients()} before deploying. \\
+        \hline
+        Empirical tuning & Ultimate gain/period analysis, reaction-curve algebra & Run \texttt{demo.py pid} while applying Ziegler--Nichols or Cohen--Coon tunes to match observed oscillations. \\
+        \hline
+        Lead/lag design & Pole-zero placement, angle condition & Overlay Bode/Nyquist plots using \texttt{scripts.tutorials classical} to see phase boosts and low-frequency gain changes. \\
+        \hline
+    \end{tabularx}
+    \caption{Linking classical controller concepts to the math and Python validation workflow.}
+\end{table}
+
+\section{PID Controller Derivation}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Derives continuous and discrete PID laws, relating Laplace-domain formulas to implementable difference equations.
+    \item[\textbf{Why?}] PID remains the industry workhorse; understanding its derivation clarifies how each term shapes dynamics.
+    \item[\textbf{When?}] Before tuning gains or porting a controller to embedded code.
+    \item[\textbf{How?}] Express $C(s)$, apply discretisation (e.g., Tustin), and reorganise into an incremental update with anti-windup hooks.
+    \item[\textbf{Example}] Use the derived coefficients in \texttt{PIDController.step()} and observe how derivative filtering changes overshoot in simulation.
+\end{beginnerguide}
+\subsection{Continuous-Time Formula}
+The classic PID law
+\[
+    C(s) = K_p + \frac{K_i}{s} + K_d s = K_p\left(1 + \frac{1}{T_i s} + T_d s\right)
+\]
+combines proportional, integral, and derivative actions. Proportional gain speeds up response, integral action removes steady-state error, and derivative action adds phase lead but amplifies sensor noise without filtering.
+
+\subsection{Discrete Realization}
+Applying the Tustin substitution $s \rightarrow \frac{2}{T_s} \frac{1 - z^{-1}}{1 + z^{-1}}$ yields
+\[
+    C(z) = K_p \left( 1 + \frac{T_s}{2T_i} \frac{1 + z^{-1}}{1 - z^{-1}} + \frac{2 T_d}{T_s} \frac{1 - z^{-1}}{1 + z^{-1}} \right).
+\]
+Expanding and grouping powers of $z^{-1}$ provides the incremental implementation:
+\begin{align*}
+    u[k] = u[k-1] &+ K_p\left(1 + \frac{T_s}{2T_i} + \frac{2T_d}{T_s}\right) e[k]\\
+                  &- K_p\left(1 - \frac{T_s}{2T_i} + \frac{4T_d}{T_s}\right) e[k-1]\\
+                  &+ K_p\left(\frac{2T_d}{T_s}\right) e[k-2].
+\end{align*}
+
+\subsection{Code Mapping}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{4cm}|X|X|}
+        \hline
+        \textbf{Python} & \textbf{Formula} & \textbf{Explanation} \\
+        \hline
+        \texttt{PIDController.step()} & Incremental PID law & Implements the discrete update with saturation and derivative filtering hooks. \\
+        \hline
+        \texttt{pid.print\_incremental}\\\texttt{\_coefficients()} & Coefficient readout & Verifies algebraic manipulation term-by-term. \\
+        \hline
+    \end{tabularx}
+    \caption{PID difference equation traceability.}
+\end{table}
+
+\section{Empirical Tuning Templates}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Rule-of-thumb PID parameter sets (Ziegler--Nichols, Cohen--Coon, direct synthesis).
+    \item[\textbf{Why?}] They provide reliable starting points when system identification or optimisation is unavailable.
+    \item[\textbf{When?}] During commissioning or when you need a quick baseline before fine-tuning.
+    \item[\textbf{How?}] Measure ultimate gain/period or reaction-curve parameters, plug into the formulas, and validate with simulation.
+    \item[\textbf{Example}] Determine $K_u$ and $T_u$ from a sustained oscillation test, then apply Table~\ref{tab:zn} to initialise $K_p$, $T_i$, $T_d$.
+\end{beginnerguide}
+\subsection{Ziegler--Nichols}
+Increase $K_p$ with $K_i = K_d = 0$ until sustained oscillations occur; record the ultimate gain $K_u$ and period $T_u$. Recommended starting gains appear in Table~\ref{tab:zn}.
+\begin{table}[h]
+    \centering
+    \begin{tabular}{lcc}
+        \toprule
+        Controller & $K_p$ & $(T_i, T_d)$ \\
+        \midrule
+        P   & $0.5 K_u$   & -- \\
+        PI  & $0.45 K_u$  & $T_i = T_u/1.2$ \\
+        PID & $0.6 K_u$   & $T_i = T_u/2$, $T_d = T_u/8$ \\
+        \bottomrule
+    \end{tabular}
+    \caption{Ziegler--Nichols initial settings.}
+    \label{tab:zn}
+\end{table}
+
+\subsection{Cohen--Coon}
+For processes with appreciable delay, identify the reaction-curve parameters (dead time $L$, rise time $R$, process gain $K$) and substitute them into the Cohen--Coon formulas (referenced in \textcite{astrom1995pid}). These provide better balance between overshoot and steady-state accuracy when lag dominates.
+
+\subsection{Direct Synthesis}
+Choose a desired closed-loop model $T(s)$ and back out the controller:
+\[
+    C(s) = \frac{T(s)}{1 - T(s)} \frac{1}{P(s)}.
+\]
+Factor the result into PID plus filters. This method mirrors optimal-control intuition and prepares learners for state-space design.
+
+\section{Lead/Lag Compensation}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Methods for shaping phase and steady-state gain using lead, lag, or lead--lag networks.
+    \item[\textbf{Why?}] These compensators meet robustness and accuracy requirements without abandoning classical design tools.
+    \item[\textbf{When?}] After baseline PID design when extra phase margin or steady-state accuracy is needed.
+    \item[\textbf{How?}] Place zeros/poles analytically, compute required gain, and verify margins via Bode/Nyquist plots.
+    \item[\textbf{Example}] Choose $\alpha$ for a desired phase boost, set $z$ and $p$, then evaluate \texttt{control.margin(K * compensator * P)} to confirm targets.
+\end{beginnerguide}
+\subsection{Lead Design Steps}
+\begin{enumerate}[leftmargin=*]
+    \item Target crossover $\omega_c$ and evaluate $P(\mathrm{j}\omega_c)$.
+    \item Determine additional phase $\phi_\mathrm{req}$ to meet the desired phase margin.
+    \item Choose $\alpha = \frac{1 - \sin\phi_\mathrm{req}}{1 + \sin\phi_\mathrm{req}}$; place zero at $z = \omega_c/\sqrt{\alpha}$ and pole at $p = \alpha z$.
+    \item Select gain $K$ so that $|K C_{\text{lead}}(\mathrm{j}\omega_c) P(\mathrm{j}\omega_c)| = 1$.
+\end{enumerate}
+The lead transfer function $C_{\text{lead}}(s) = K \frac{s + z}{s + p}$ boosts phase by $\phi_{\max} = \sin^{-1}\!\left(\frac{1 - \alpha}{1 + \alpha}\right)$ near $\sqrt{z p}$.
+
+\subsection{Lag Design Steps}
+Lag networks increase low-frequency gain via $C_{\text{lag}}(s) = K \frac{s + z}{s + p}$ with $z/p \approx 10$ and $p$ placed below crossover. They improve steady-state accuracy with modest phase penalty.
+
+\subsection{Code Mapping}
+\begin{table}[h]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{4cm}|X|X|}
+        \hline
+        \textbf{Python} & \textbf{Formula} & \textbf{Explanation} \\
+        \hline
+        \texttt{control.tf([1/z, 1], [1/p, 1])} & $C_{\text{lead}}(s)$ & Constructs lead or lag compensators directly from zero/pole choices. \\
+        \hline
+        \texttt{control.margin(K * compensator * P)} & GM, PM & Validates the analytic gain/phase calculations. \\
+        \hline
+    \end{tabularx}
+    \caption{Lead/lag synthesis via Python.}
+\end{table}
+
+\section{Case Study: Second-Order Position Control}
+\begin{beginnerguide}
+    \item[\textbf{What?}] A complete worked example applying lead compensation to a second-order plant.
+    \item[\textbf{Why?}] Demonstrates how analytic formulas translate into numerical gains and measurable performance metrics.
+    \item[\textbf{When?}] Use as a template when tackling similar servo problems or presenting design rationale.
+    \item[\textbf{How?}] Analyse the uncompensated plant, select crossover, compute compensator parameters, and verify via simulation.
+    \item[\textbf{Example}] Implement the provided Python script to compute GM/PM and rise time for the compensated $P(s)=1/(s(s+4))$ plant.
+\end{beginnerguide}
+For $P(s) = \tfrac{1}{s(s+4)}$ and requirements $t_r < 0.6$~s, $M_p < 15\%$, PM $> 50^\circ$:
+\begin{enumerate}[leftmargin=*]
+    \item Uncompensated analysis shows insufficient phase margin.
+    \item Choose $\omega_c = 3$~rad/s; evaluate $|P(\mathrm{j}3)| \approx 0.11$ and phase $\approx -129^\circ$.
+    \item Required phase boost $\approx 35^\circ$ $\Rightarrow \alpha = 0.18$, $z \approx 1.3$, $p \approx 7.2$, $K \approx 6.5$.
+    \item Append lag (e.g., zero at $0.03$, pole at $0.003$) if steady-state error remains large.
+\end{enumerate}
+
+\subsection{Simulation Verification}
+\begin{lstlisting}[language=python]
+import control, numpy as np
+
+P = control.tf([1], [1, 4, 0])
+lead = control.tf([1/1.3, 1], [1/7.2, 1])
+K = 6.5
+L = K * lead * P
+GM, PM, _, _ = control.margin(L)
+print(f"GM = {20*np.log10(GM):.2f} dB, PM = {PM:.1f} deg")
+T = control.feedback(L)
+t, y = control.step_response(T)
+rt = t[np.searchsorted(y, 0.9)] - t[np.searchsorted(y, 0.1)]
+print(f"Rise time: {rt:.3f} s")
+\end{lstlisting}
+Compare simulated metrics with design predictions and adjust $K$, $z$, $p$ accordingly.
+
+\section{Practice Workflow}
+\begin{beginnerguide}
+    \item[\textbf{What?}] A step-by-step procedure for classical controller design with simulation validation.
+    \item[\textbf{Why?}] Ensures you iterate systematically and capture both analytical and numerical evidence.
+    \item[\textbf{When?}] After completing derivations and before presenting calibration results.
+    \item[\textbf{How?}] Derive equations, apply tuning templates, shape loops, run tutorial scripts, and document outcomes.
+    \item[\textbf{Example}] Execute \tutorialcmd[--output-dir figures]{classical} and annotate the resulting step plot with achieved specs.
+\end{beginnerguide}
+\begin{enumerate}[leftmargin=*]
+    \item Derive continuous and discrete PID equations; verify coefficients with \texttt{PIDController.print\_incremental\_coefficients()}.
+    \item Apply Ziegler--Nichols or Cohen--Coon to obtain starting gains, then refine using second-order metrics from Chapter~\ref{chap:time}.
+    \item Design lead/lag compensators using the analytic steps; check gain/phase margins with \texttt{control.margin}.
+    \item Run \tutorialcmd[--output-dir figures]{classical} to generate comparison plots such as Figure~\ref{fig:lead-step}.
+    \item Overlay uncompensated and compensated responses to visualise how loop shaping meets specifications.
+\end{enumerate}
+See Appendix~\ref{chap:tooling} for the canonical command snippets that regenerate these plots and manage build artifacts.
+\IfFileExists{../figures/classical_step.png}{
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.75\linewidth]{../figures/classical_step.png}
+        \caption{Lead-compensated step response created by \tutorialcmd{classical}.}
+        \label{fig:lead-step}
+    \end{figure}
+}{
+    \begin{figure}[h]
+        \centering
+        \fbox{\parbox{0.7\linewidth}{Run \tutorialcmd{classical} to create the lead-compensated step response, then recompile.}}
+        \caption{Placeholder for the lead-compensated step response.}
+        \label{fig:lead-step}
+    \end{figure}
+}
+
+\section{Classical and Modern Connections}
+\begin{beginnerguide}
+    \item[\textbf{What?}] Conceptual bridge between frequency-domain compensators and state-space feedback/observers.
+    \item[\textbf{Why?}] Recognising these parallels eases the transition to modern control and unifies the course content.
+    \item[\textbf{When?}] After mastering classical tools and before tackling LQR or Kalman filter chapters.
+    \item[\textbf{How?}] Interpret integral action as state augmentation, lead compensation as pole placement, and lag as bias correction.
+    \item[\textbf{Example}] Rewrite a PI controller as state feedback on $[x; \int e]$ and compare gains with a full state-space design.
+\end{beginnerguide}
+Classical compensators can be interpreted via state augmentation:
+\begin{itemize}[leftmargin=*]
+    \item Integral action corresponds to augmenting the state with $x_I = \int e(t)\,\mathrm{d}t$ and applying state feedback $u = -K x - K_I x_I$.
+    \item Lead compensation approximates state-feedback placement of dominant poles combined with prefilters.
+    \item Lag compensation resembles observer-based bias correction by shaping low-frequency gain.
+\end{itemize}
+This perspective eases the transition to Chapter~\ref{chap:modern}, where optimal control and observers generalize these concepts. \textcite{ljung2012control} emphasizes bridging frequency-domain intuition with state-space design for learners moving toward multi-variable systems.
+
+\begin{takeaway}
+\begin{itemize}[leftmargin=*]
+    \item PID controllers provide a versatile baseline; tune them thoughtfully and implement anti-windup.
+    \item Lead and lag networks enable robust shaping of loop gain and phase, ensuring compliance with stability margins.
+    \item Analytic design must always be cross-checked with simulation: use Bode, Nyquist, and step responses to validate specifications.
+\end{itemize}
+\end{takeaway}
+
+\section{Module Review}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{PID law}: $u[k]$ incremental form with Tustin-discretised coefficients.
+    \item \textbf{Empirical tuning}: Ziegler--Nichols and Cohen--Coon rules provide quick starting points.
+    \item \textbf{Lead/lag}: phase boost $\phi_{\max}$, zero/pole placement, gain selection to hit $\omega_c$.
+    \item \textbf{Validation}: frequency-domain margins and time-domain step response must both meet specifications.
+    \item \textbf{Practice}: leverage \tutorialcmd{classical} to iterate on analytic design choices.
+\end{itemize}
+
+\section{Keyword Review}
+\begin{vocabulary}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{PID controller}: combination of proportional, integral, and derivative actions shaping loop dynamics.
+    \item \textbf{Ultimate gain/period} ($K_u$, $T_u$): oscillation parameters used for Ziegler--Nichols tuning.
+    \item \textbf{Lead compensator}: zero-pole pair that adds phase around crossover to increase stability margins.
+    \item \textbf{Lag compensator}: zero-pole pair that increases low-frequency gain to reduce steady-state error.
+    \item \textbf{Incremental implementation}: discrete-time difference equation computing $u[k]$ from recent errors to limit numerical drift.
+\end{itemize}
+\end{vocabulary}
